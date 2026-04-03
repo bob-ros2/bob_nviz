@@ -70,32 +70,53 @@ public:
   : area_(area), text_color_(text_color), bg_color_(bg_color), scale_(scale), align_(align),
     columns_override_(columns), line_limit_(line_limit)
   {
-    for (unsigned char c : title_in) {
-      if (c >= 32 && c <= 126) {
-        title_ += static_cast<char>(c);
-      }
-    }
+    append(title_in, true); // Use title_in as initial title filtering
     update_wrap_width();
     lines_.push_back("");         // Start with one empty line
   }
 
-  void append(const std::string & text)
+  void append(const std::string & text, bool is_title = false)
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    
+    std::string filtered = "";
+    uint8_t utf8_lead = 0;
 
     for (unsigned char c : text) {
-      if (c == '\n') {
-        lines_.push_back("");
-      } else if (c == '\r') {
-        continue;
-      } else if (c == '\t') {
-        for (int i = 0; i < 4; ++i) {
-          add_char_to_current(' ');
+      if (utf8_lead == 0) {
+        if (c == 0xC2 || c == 0xC3) {
+          utf8_lead = c;
+          continue;
         }
-      } else if (c >= 32 && c <= 126) {
-        add_char_to_current(static_cast<char>(c));
+        if (c == '\n') {
+          if (!is_title) lines_.push_back("");
+        } else if (c == '\r') {
+          continue;
+        } else if (c == '\t') {
+          if (!is_title) {
+            for (int i = 0; i < 4; ++i) add_char_to_current(' ');
+          }
+        } else if (c >= 32) {
+          if (is_title) filtered += static_cast<char>(c);
+          else add_char_to_current(static_cast<char>(c));
+        }
+      } else {
+        // Handle 2-byte UTF-8 sequences for ISO-8859-1 range (U+0080 to U+00FF)
+        uint8_t decoded = 0;
+        if (utf8_lead == 0xC2) {
+            decoded = c; // Range 0x80 - 0xBF
+        } else if (utf8_lead == 0xC3) {
+            decoded = c + 0x40; // Range 0xC0 - 0xFF
+        }
+        if (decoded >= 32) {
+          if (is_title) filtered += static_cast<char>(decoded);
+          else add_char_to_current(static_cast<char>(decoded));
+        }
+        utf8_lead = 0;
       }
     }
+
+    if (is_title) title_ = filtered;
 
     while (lines_.size() > line_limit_) {
       lines_.pop_front();
@@ -146,7 +167,7 @@ public:
       }
       int title_px_w = static_cast<int>(title_.length()) * 8 * scale_;
       int title_x = area_.x + (area_.w - title_px_w) / 2;
-      for (char c : title_) {
+      for (unsigned char c : title_) {
         draw_char(buffer, buffer_w, buffer_h, c, title_x, area_.y + 3, {255, 255, 255, 255});
         title_x += 8 * scale_;
       }
@@ -180,7 +201,7 @@ public:
         cur_x = area_.x + (area_.w - line_px_w) / 2;
       }
 
-      for (char c : line) {
+      for (unsigned char c : line) {
         draw_char(buffer, buffer_w, buffer_h, c, cur_x, cur_y, text_color_);
         cur_x += char_w;
       }
@@ -219,13 +240,7 @@ public:
   }
   void set_title(const std::string & title)
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    title_ = "";
-    for (unsigned char c : title) {
-      if (c >= 32 && c <= 126) {
-        title_ += static_cast<char>(c);
-      }
-    }
+    append(title, true);
   }
 
 private:
@@ -251,11 +266,11 @@ private:
   }
 
   void draw_char(
-    std::vector<uint8_t> & buffer, int buf_w, int buf_h, char c, int start_x,
+    std::vector<uint8_t> & buffer, int buf_w, int buf_h, uint8_t c, int start_x,
     int start_y, Color color)
   {
-    if (c < 32 || c > 126) {return;}
-    const uint8_t * bitmap = font8x8_basic[c - 32];
+    // Use full 256 char data
+    const uint8_t * bitmap = font8x8_data[c];
     for (int row = 0; row < 8; ++row) {
       for (int col = 0; col < 8; ++col) {
         if (bitmap[row] & (1 << (7 - col))) {
