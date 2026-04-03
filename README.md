@@ -143,7 +143,13 @@ To inject audio files into the running stream (e.g., background music), use the 
 `bob_nviz` excels at streaming from headless, low-power ARM devices (RPi, Synology, etc.) by using efficient raw-video pipes and FFmpeg.
 
 ### 1. Configuration
-Streaming is configured via environment variables. Ensure `TWITCH_STREAM_KEY` is set in your environment.
+Streaming is configured via environment variables. The easiest way is to use a `.env` file based on the provided template:
+
+```bash
+cp .env.template .env
+# Edit .env and add your TWITCH_STREAM_KEY
+cat .env
+```
 
 | Variable | Default | Description |
 |----------|---------|-------------|
