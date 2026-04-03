@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     # image: ghcr.io/bob-ros2/bob-nviz:latest
     image: bob-nviz:latest
-    container_name: streamer
+    container_name: bob-nvizstreamer
     network_mode: host
     restart: unless-stopped
     env_file:
