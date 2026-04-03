@@ -14,7 +14,6 @@
 - **Auto-Expiration**: Elements can automatically disappear after a set time.
 - **Latched State**: The current layout is always available via `events_changed`.
 
----
 
 ## Installation & Building
 
@@ -26,7 +25,6 @@ colcon build --packages-select bob_nviz
 source install/setup.bash
 ```
 
----
 
 ## Usage
 
@@ -41,7 +39,6 @@ Use `ffplay` to view the raw BGRA stream:
 ffplay -f rawvideo -pixel_format bgra -video_size 854x480 -i /tmp/nano_fifo
 ```
 
----
 
 ## ROS 2 API
 
@@ -61,7 +58,6 @@ ffplay -f rawvideo -pixel_format bgra -video_size 854x480 -i /tmp/nano_fifo
 | `events_changed` | `std_msgs/String` | Pub | **Latched** state of all active layers. |
 | **Dynamic** | `std_msgs/String` | Sub | Topics for terminal content or bitmap data. |
 
----
 
 ## Dynamic Configuration
 
@@ -94,7 +90,6 @@ Displays raw image data (1-bit or 8-bit).
 - `depth` (int): `1` (1-bit mask) or `8` (8-bit grayscale).
 - `color`: `[R, G, B, A]` for the foreground.
 
----
 
 ## Examples (`ros2 topic pub`)
 
