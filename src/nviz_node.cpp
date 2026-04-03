@@ -517,9 +517,13 @@ private:
                     std::vector<uint8_t> b;
                     for (size_t i = 0; i + 1 < m->data.length(); i += 2) {
                       try {
-                        std::string sub = m->data.substr(i, 2);
-                        b.push_back(static_cast<uint8_t>(std::stoul(sub, nullptr, 16)));
-                      } catch (...) {break;}
+                        std::string hex_sub = m->data.substr(i, 2);
+                        uint8_t val = static_cast<uint8_t>(
+                          std::stoul(hex_sub, nullptr, 16));
+                        b.push_back(val);
+                      } catch (...) {
+                        break;
+                      }
                     }
                     std::lock_guard<std::mutex> lock_sub_hex(mtx_);
                     if (bitmaps_.count(id)) {
