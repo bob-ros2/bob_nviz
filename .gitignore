@@ -1,0 +1,22 @@
+# ROS 2 build folders
+build/
+install/
+log/
+
+# Install/Build artifacts within source
+# (though ideally they should be in the root build folders)
+*.pyc
+__pycache__/
+
+# IDE folders
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+/FIFO*
+/nano_fifo*
+
+# Backup files
+*~
