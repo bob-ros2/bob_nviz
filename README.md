@@ -10,8 +10,8 @@
 ## Key Features
 - **CPU-Only Rendering**: Zero GPU usage, ideal for headless or low-power ARM servers.
 - **Minimal Dependencies**: Only `rclcpp` and `nlohmann_json`.
-- **Amiga-Style Aesthetic**: 8x8 bitmap font for that retro terminal feel.
-- **Smart Text Handling**: Supports text token streams (LLM-style), autoscrolling, and manual wrapping.
+- **Amiga-Style Aesthetic**: 8x8 bitmap font (with full ISO-8859-1 / Latin-1 support).
+- **Smart Text Handling**: Supports text token streams (LLM-style), autoscrolling, manual wrapping, and **UTF-8 decoding** into Latin-1.
 - **Canvas/Bitmap Support**: Displays 1-bit Masks or 8-bit Grayscale images via raw topics or Hex-strings.
 - **High Performance**: Optimized non-blocking FIFO streaming.
 
@@ -42,6 +42,7 @@ You can configure the node via ROS parameters or environment variables. **Enviro
 | `height` | `480` | Rendering height (px). Environment variable: `NVIZ_HEIGHT` |
 | `fps` | `30.0` | Frames per second. Environment variable: `NVIZ_FPS` |
 | `fifo_path` | `/tmp/nano_fifo` | Path to output raw BGRA pipe. Environment variable: `NVIZ_FIFO_PATH` |
+| `queue_size` | `1000` | ROS subscriber queue size. Environment variable: `NVIZ_QUEUE_SIZE` |
 
 ### Display the stream
 Use `ffplay` to view the raw BGRA stream:
