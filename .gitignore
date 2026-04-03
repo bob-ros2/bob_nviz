@@ -18,5 +18,8 @@ __pycache__/
 /FIFO*
 /nano_fifo*
 
+# Local configuration (CRITICAL: includes TWITCH_STREAM_KEY)
+.env
+
 # Backup files
 *~
