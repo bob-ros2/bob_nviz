@@ -95,7 +95,8 @@ trap cleanup EXIT
 # --- Launch Mixer (bob_audio) ---
 echo "Starting audio mixer node..."
 # Use internal master pipe for FFmpeg, input pipe for external feeding
-ros2 run bob_audio mixer --ros-args $NS_REMAP \
+# $MIXER_REMAPS allows connecting topics like /eva/tts/audio_raw to in0
+ros2 run bob_audio mixer --ros-args $NS_REMAP $MIXER_REMAPS \
     -p output_fifo:=$AUDIO_MASTER_PATH \
     -p input_fifo:=$AUDIO_PIPE \
     -p enable_fifo_input:=true \
