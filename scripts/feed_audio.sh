@@ -17,4 +17,5 @@ fi
 echo "Feeding $1 to $AUDIO_PIPE..."
 
 # Convert to S16LE 44100Hz Stereo (expected by mixer)
-ffmpeg -i "$1" -f s16le -ar 44100 -ac 2 -y "$AUDIO_PIPE"
+# Added -re to stream in real-time speed.
+ffmpeg -re -i "$1" -f s16le -ar 44100 -ac 2 -y "$AUDIO_PIPE"
