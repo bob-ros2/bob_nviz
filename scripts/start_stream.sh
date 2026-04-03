@@ -105,9 +105,11 @@ do
     
     # Use master pipe fed by bob_audio mixer (S16LE, 44100Hz, Stereo)
     ffmpeg \
-        -f rawvideo -pixel_format bgra -video_size ${NVIZ_WIDTH}x${NVIZ_HEIGHT} -framerate ${NVIZ_FPS} -thread_queue_size 1024 -i $NVIZ_FIFO_PATH \
+        -f rawvideo -pixel_format bgra -video_size ${NVIZ_WIDTH}x${NVIZ_HEIGHT} \
+        -framerate ${NVIZ_FPS} -thread_queue_size 1024 -i $NVIZ_FIFO_PATH \
         -f s16le -ar 44100 -ac 2 -i "$AUDIO_MASTER_PATH" \
-        -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency -b:v 3000k -maxrate 3000k -bufsize 6000k \
+        -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency \
+        -b:v 3000k -maxrate 3000k -bufsize 6000k \
         -c:a aac -b:a 128k -ar 44100 -ac 2 \
         -g 60 -r ${NVIZ_FPS} \
         -f flv "${INGEST_SERVER}${STREAM_KEY}" || true
