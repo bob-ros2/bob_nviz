@@ -26,10 +26,12 @@ export NVIZ_FPS="${NVIZ_FPS:-30}"
 export NVIZ_FIFO_PATH="${NVIZ_FIFO_PATH:-/tmp/nano_fifo}"
 
 # --- ROS Namespace Handling ---
-# If NAMESPACE is set, export it as ROS_NAMESPACE so all nodes use it.
+# Explicitly use remapping if ROS_NAMESPACE is present.
 export ROS_NAMESPACE="${NAMESPACE:-${ROS_NAMESPACE:-}}"
+NS_REMAP=""
 if [[ -n "$ROS_NAMESPACE" ]]; then
-    echo "[$(date)] ROS Namespace: $ROS_NAMESPACE"
+    echo "[$(date)] Applying Namespace Remapping: $ROS_NAMESPACE"
+    NS_REMAP="-r __ns:=$ROS_NAMESPACE"
 fi
 
 # Audio pipes (consistent with sdlviz/bob_audio)
@@ -68,11 +70,6 @@ if [ ! -f "$ROS_SETUP_PATH" ]; then
     exit 1
 fi
 
-if [ ! -f "$ROS_SETUP_PATH" ]; then
-    echo "Error: ROS 2 setup file not found at '$ROS_SETUP_PATH'."
-    exit 1
-fi
-
 # --- Sourcing and Setup ---
 source "$ROS_SETUP_PATH"
 echo "[$(date)] ROS 2 workspace sourced from $ROS_SETUP_PATH."
@@ -98,14 +95,14 @@ trap cleanup EXIT
 # --- Launch Mixer (bob_audio) ---
 echo "Starting audio mixer node..."
 # Use internal master pipe for FFmpeg, input pipe for external feeding
-ros2 run bob_audio mixer --ros-args \
+ros2 run bob_audio mixer --ros-args $NS_REMAP \
     -p output_fifo:=$AUDIO_MASTER_PATH \
     -p input_fifo:=$AUDIO_PIPE \
     -p heartbeat:=true &
 
 # --- Launch Nviz Application ---
 echo "Starting nviz node..."
-ros2 run bob_nviz nviz "$@" &
+ros2 run bob_nviz nviz "$@" --ros-args $NS_REMAP &
 
 NODE_PID=$!
 
