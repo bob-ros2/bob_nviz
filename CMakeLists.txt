@@ -36,15 +36,6 @@ install(TARGETS
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  # Exclude build and install directories from linting
-  set(ament_cmake_copyright_FOUND TRUE)
-  set(ament_cmake_cpplint_FOUND TRUE)
-  set(ament_cmake_uncrustify_FOUND TRUE)
-  list(APPEND AMENT_LINT_AUTO_EXCLUDE
-    build
-    install
-    bin
-  )
   ament_lint_auto_find_test_dependencies()
 endif()
 
