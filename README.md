@@ -105,38 +105,67 @@ ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"Strin
 
 ### Add a Bitmap Icon (Heart) via Hex
 ```bash
-## Twitch Streaming & Audio Integration
+# Register bitmap
+ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"Bitmap\", \"id\":\"heart\", \"area\":[20, 20, 16, 16], \"topic\":\"/ui/heart\", \"depth\": 1, \"color\":[255, 50, 50, 255]}]"'
 
-`bob_nviz` is designed for high-performance streaming on constrained hardware (ARM/RPi). It integrates seamlessly with the `bob_audio` mixer to provide a complete audio/video stream.
+# Send data
+ros2 topic pub --once /ui/heart/hex std_msgs/msg/String "data: '0C301E783FfC7FfE7FfE7FfE3FfC1Ff80fF007E003C0018'"
+```
 
-### 1. Start the Stream
-The `scripts/start_stream.sh` script automates the launch of the nviz node, the audio mixer (with silence heartbeat), and the FFmpeg encoder.
+### Remove a Layer
+```bash
+ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"action\":\"remove\", \"id\":\"alert\"}]"'
+```
 
-**Requirements:**
-- `TWITCH_STREAM_KEY` environment variable must be set.
-- `bob_audio` package must be built in the same workspace.
+---
+
+## Audio System
+
+`bob_nviz` is designed to work in conjunction with the [**`bob_audio`**](https://github.com/bob-ros2/bob_audio) package. To ensure a stable stream without disconnects, a constant audio "heartbeat" is required.
+
+### 1. The Mixer Pipeline
+The `bob_audio` mixer node combines multiple audio sources (TTS, System Sounds, Music) into a single master pipe (`/tmp/audio_master_pipe`). This pipe is then consumed by FFmpeg.
+
+*   **Silence Heartbeat**: Ensures FFmpeg always receives audio frames, even if no ROS nodes are currently speaking.
+*   **Dynamic Mixing**: Use `ros2 topic pub` to send audio data to the mixer's input topics.
+
+### 2. Feeding External Audio
+To inject audio files into the running stream (e.g., background music), use the provided helper script:
+
+```bash
+./scripts/feed_audio.sh my_song.mp3
+```
+
+---
+
+## Twitch Streaming
+
+`bob_nviz` excels at streaming from headless, low-power ARM devices (RPi, Synology, etc.) by using efficient raw-video pipes and FFmpeg.
+
+### 1. Configuration
+Streaming is configured via environment variables. Ensure `TWITCH_STREAM_KEY` is set in your environment.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NVIZ_WIDTH` | `854` | Video width (e.g., 480p, 720p). |
+| `NVIZ_HEIGHT` | `480` | Video height. |
+| `NVIZ_FPS` | `30` | Target framerate. |
+| `NVIZ_FIFO_PATH` | `/tmp/nano_fifo` | Raw video pipe location. |
+| `AUDIO_MASTER_PATH` | `/tmp/audio_master_pipe` | Mixed audio pipe location. |
+
+### 2. Starting the Stream
+The `start_stream.sh` script orchestrates the **nviz node**, the **audio mixer**, and **FFmpeg** in one go.
 
 ```bash
 export TWITCH_STREAM_KEY="your_key_here"
 ./scripts/start_stream.sh
 ```
 
-**Customization:**
-You can override defaults using environment variables:
-- `NVIZ_WIDTH`, `NVIZ_HEIGHT`, `NVIZ_FPS`
-- `AUDIO_PIPE`: Input pipe for the mixer.
-- `AUDIO_MASTER_PIPE`: Output of the mixer (fed to FFmpeg).
+The script will:
+1. Create the necessary Unix pipes.
+2. Start the `bob_audio` mixer with a silence heartbeat.
+3. Start the `nviz` visualization node.
+4. Run an FFmpeg loop that encodes and pushes the combined stream to Twitch.
 
-### 2. Feed Audio to the Mix
-You can pipe music, TTS, or any audio into the stream while it's running:
-
-```bash
-./scripts/feed_audio.sh my_song.mp3
-```
-
-This uses the `AUDIO_PIPE` to feed the `bob_audio` mixer node, which then combines it with other ROS audio topics (like TTS) and sends it to the stream.
-
-### Remove a Layer
-```bash
-ros2 topic pub --once /eva/events std_msgs/msg/String "data: '[{\"id\":\"main\", \"action\":\"remove\"}]'"
-```
+### 3. Cleanup
+To stop everything, simply use `Ctrl+C`. The script includes a trap to cleanly shut down all background ROS processes.
