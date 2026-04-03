@@ -95,18 +95,18 @@ Displays raw image data (1-bit or 8-bit).
 
 ### Add a scrolling LLM Terminal
 ```bash
-ros2 topic pub --once /eva/events std_msgs/msg/String "data: '[{\"action\":\"add\", \"type\":\"String\", \"id\":\"main\", \"title\":\"LLM Stream\", \"topic\":\"/eva/llm\", \"area\":[50, 50, 400, 300], \"mode\": \"default\"}]'"
+ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"action\":\"add\", \"type\":\"String\", \"id\":\"main\", \"title\":\"LLM Stream\", \"topic\":\"/eva/llm\", \"area\":[50, 50, 400, 300], \"mode\": \"default\"}]"'
 ```
 
 ### Show an Auto-Expiring Alert
 ```bash
-ros2 topic pub --once /eva/events std_msgs/msg/String "data: '[{\"type\":\"String\", \"id\":\"alert\", \"text\":\"System Warning!\", \"expire\": 5.0, \"area\":[227, 200, 400, 50], \"align\":\"center\", \"text_color\":[255, 0, 0, 255]}]'"
+ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"String\", \"id\":\"alert\", \"text\":\"System Warning!\", \"expire\": 5.0, \"area\":[227, 200, 400, 50], \"align\":\"center\", \"text_color\":[255, 0, 0, 255]}]"'
 ```
 
 ### Add a Bitmap Icon (Heart) via Hex
 ```bash
 # Register bitmap
-ros2 topic pub --once /eva/events std_msgs/msg/String "data: '[{\"type\":\"Bitmap\", \"id\":\"heart\", \"area\":[20, 20, 16, 16], \"topic\":\"/ui/heart\", \"depth\": 1, \"color\":[255, 50, 50, 255]}]'"
+ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"Bitmap\", \"id\":\"heart\", \"area\":[20, 20, 16, 16], \"topic\":\"/ui/heart\", \"depth\": 1, \"color\":[255, 50, 50, 255]}]"'
 
 # Send data
 ros2 topic pub --once /ui/heart/hex std_msgs/msg/String "data: '0C301E783FfC7FfE7FfE7FfE3FfC1Ff80fF007E003C0018'"
