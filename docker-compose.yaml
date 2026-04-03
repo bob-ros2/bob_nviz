@@ -1,12 +1,13 @@
-name: eva-streamer
+name: bob-nviz
 
 services:
   nviz:
     build:
       context: .
       dockerfile: Dockerfile
+    # image: ghcr.io/bob-ros2/bob-nviz:latest
     image: bob-nviz:latest
-    container_name: bob_nviz_streamer
+    container_name: streamer
     network_mode: host
     restart: unless-stopped
     env_file:

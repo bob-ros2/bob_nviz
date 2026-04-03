@@ -155,11 +155,16 @@ cat .env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `TWITCH_STREAM_KEY` | - | Your Twitch Stream Key (passed as environment). |
+| `TWITCH_STREAM_KEY_FILE` | - | Path to a file containing the Stream Key (e.g., `/run/secrets/twitch_key`). |
+| `INGEST_SERVER` | `rtmp://live-fra.twitch.tv/app/` | Twitch ingest server URL. |
 | `NVIZ_WIDTH` | `854` | Video width (e.g., 480p, 720p). |
 | `NVIZ_HEIGHT` | `480` | Video height. |
 | `NVIZ_FPS` | `30` | Target framerate. |
 | `NVIZ_FIFO_PATH` | `/tmp/nano_fifo` | Raw video pipe location. |
 | `AUDIO_MASTER_PATH` | `/tmp/audio_master_pipe` | Mixed audio pipe location. |
+
+**Note on Security**: If both `TWITCH_STREAM_KEY_FILE` and `TWITCH_STREAM_KEY` are provided, the file-based key takes precedence. This is recommended for Docker Secrets or encrypted setups.
 
 ### 2. Starting the Stream
 The `start_stream.sh` script orchestrates the **nviz node**, the **audio mixer**, and **FFmpeg** in one go.
