@@ -87,17 +87,23 @@ public:
       lines_.clear();
       lines_.push_back("");
     }
-    for (unsigned char c : text) {
-      if (utf8_lead_ == 0) {
-        if (c == 0xC2 || c == 0xC3) {
-          utf8_lead_ = c;
-          continue;
-        }
-        process_char(c);
+    for (size_t i = 0; i < text.size(); ++i) {
+      if (text[i] == '\\' && i + 1 < text.size() && text[i + 1] == 'n') {
+        process_char('\n');
+        i++;
       } else {
-        uint8_t decoded = (utf8_lead_ == 0xC2) ? c : (c + 0x40);
-        process_char(decoded);
-        utf8_lead_ = 0;
+        unsigned char c = text[i];
+        if (utf8_lead_ == 0) {
+          if (c == 0xC2 || c == 0xC3) {
+            utf8_lead_ = c;
+            continue;
+          }
+          process_char(c);
+        } else {
+          uint8_t decoded = (utf8_lead_ == 0xC2) ? c : (c + 0x40);
+          process_char(decoded);
+          utf8_lead_ = 0;
+        }
       }
     }
     if (mode_ == MODE_APPEND_NEWLINE && !text.empty()) {
