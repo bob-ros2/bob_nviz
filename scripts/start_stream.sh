@@ -29,7 +29,14 @@ export NVIZ_FIFO_PATH="${NVIZ_FIFO_PATH:-/tmp/nano_fifo}"
 export AUDIO_PIPE="${AUDIO_PIPE:-/tmp/audio_pipe}"
 export AUDIO_MASTER_PATH="${AUDIO_MASTER_PATH:-/tmp/audio_master_pipe}"
 
-export STREAM_KEY="${TWITCH_STREAM_KEY}"
+# --- Secret Handling (Environment or File) ---
+if [[ -n "$TWITCH_STREAM_KEY_FILE" ]] && [[ -f "$TWITCH_STREAM_KEY_FILE" ]]; then
+    export STREAM_KEY=$(cat "$TWITCH_STREAM_KEY_FILE" | xargs)
+    echo "[$(date)] Using stream key from file: $TWITCH_STREAM_KEY_FILE"
+else
+    export STREAM_KEY="${TWITCH_STREAM_KEY}"
+fi
+
 export INGEST_SERVER="${INGEST_SERVER:-rtmp://live-fra.twitch.tv/app/}"
 
 # Path to the ROS setup file.
@@ -45,7 +52,12 @@ ROS_SETUP_PATH="${ROS_SETUP_PATH:-$DEFAULT_ROS_SETUP}"
 
 # --- Sanity Checks ---
 if [[ -z "$STREAM_KEY" ]]; then
-    echo "Error: TWITCH_STREAM_KEY environment variable is not set."
+    echo "Error: Neither TWITCH_STREAM_KEY nor TWITCH_STREAM_KEY_FILE is set or valid."
+    exit 1
+fi
+
+if [ ! -f "$ROS_SETUP_PATH" ]; then
+    echo "Error: ROS 2 setup file not found at '$ROS_SETUP_PATH'."
     exit 1
 fi
 
