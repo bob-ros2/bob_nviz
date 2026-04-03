@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  nviz:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bob-ros2/bob_nviz:latest
+    container_name: bob_nviz_streamer
+    network_mode: host
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Override CMD to launch the Twitch streaming orchestration script
+    command: ["/ros2_ws/src/bob_nviz/scripts/start_stream.sh"]
+    volumes:
+      - /tmp:/tmp
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "1"
