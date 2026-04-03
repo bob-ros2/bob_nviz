@@ -35,7 +35,7 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     --cmake-args -DCMAKE_BUILD_TYPE=Release
 
 # Platform feedback
-RUN echo "Building for ${TARGETARCH:-amd64} platform..."
+RUN echo "Building for $(uname -m) platform..."
 
 # Entrypoint handles workspace sourcing
 ENTRYPOINT ["/bin/bash", "-c", "source /ros2_ws/install/setup.bash && \"$@\"", "--"]
