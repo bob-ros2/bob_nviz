@@ -98,6 +98,7 @@ echo "Starting audio mixer node..."
 ros2 run bob_audio mixer --ros-args $NS_REMAP \
     -p output_fifo:=$AUDIO_MASTER_PATH \
     -p input_fifo:=$AUDIO_PIPE \
+    -p enable_fifo_input:=true \
     -p heartbeat:=true &
 
 # --- Launch Nviz Application ---
