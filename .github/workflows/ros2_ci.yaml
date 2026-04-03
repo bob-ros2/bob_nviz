@@ -25,16 +25,15 @@ jobs:
       - name: Build
         run: |
           . /opt/ros/humble/setup.sh
-          # Build outside of the source directory to prevent linter recursion errors
           colcon build --packages-select bob_nviz \
-            --build-base ../build/bob_nviz \
-            --install-base ../install/bob_nviz
+            --build-base ../build \
+            --install-base ../install
 
       - name: Test
         run: |
           . /opt/ros/humble/setup.sh
-          # Run tests and point to the external build directory
           colcon test --packages-select bob_nviz \
-            --build-base ../build/bob_nviz \
-            --install-base ../install/bob_nviz
-          colcon test-result --all --verbose
+            --build-base ../build \
+            --install-base ../install
+          # Point to the external build directory for and test results
+          colcon test-result --test-result-base ../build --all --verbose
