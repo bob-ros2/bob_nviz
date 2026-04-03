@@ -30,8 +30,18 @@ colcon build --packages-select bob_nviz
 ## Usage
 Run the node (it will create `/tmp/nano_fifo` by default):
 ```bash
-ros2 run bob_nviz nviz --ros-args -p width:=854 -p height:=480 -p fps:=30.0
+ros2 run bob_nviz nviz
 ```
+
+### Configuration (Parameters & Env Vars)
+You can configure the node via ROS parameters or environment variables. **Environment variables take precedence.**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `width` | `854` | Rendering width (px). Environment variable: `NVIZ_WIDTH` |
+| `height` | `480` | Rendering height (px). Environment variable: `NVIZ_HEIGHT` |
+| `fps` | `30.0` | Frames per second. Environment variable: `NVIZ_FPS` |
+| `fifo_path` | `/tmp/nano_fifo` | Path to output raw BGRA pipe. Environment variable: `NVIZ_FIFO_PATH` |
 
 ### Display the stream
 Use `ffplay` to view the raw BGRA stream:
@@ -56,12 +66,6 @@ ros2 topic pub --once /eva/heart/hex std_msgs/msg/String "{data: '18183C3C7E7EFF
 ```
 
 ---
-
-## Configuration Parameters
-- `width` (int): Stream width (default: 854)
-- `height` (int): Stream height (default: 480)
-- `fps` (double): Frames per second (default: 30.0)
-- `fifo_path` (string): Output FIFO location (default: `/tmp/nano_fifo`)
 
 ## License
 Apache-2.0

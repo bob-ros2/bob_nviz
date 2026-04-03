@@ -16,6 +16,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <cstdlib>
 
 #include <algorithm>
 #include <chrono>
@@ -391,16 +392,28 @@ public:
   {
     signal(SIGPIPE, SIG_IGN);
 
-    // Parameters
-    this->declare_parameter("width", 854);
-    this->declare_parameter("height", 480);
-    this->declare_parameter("fps", 30.0);
-    this->declare_parameter("fifo_path", "/tmp/nano_fifo");
+    // 1. Declare Parameters with Descriptors (for ros2 param describe)
+    auto width_desc = rcl_interfaces::msg::ParameterDescriptor{};
+    width_desc.description = "Rendering width (px). Env: NVIZ_WIDTH";
+    this->declare_parameter("width", 854, width_desc);
 
-    width_ = this->get_parameter("width").as_int();
-    height_ = this->get_parameter("height").as_int();
-    fps_ = this->get_parameter("fps").as_double();
-    fifo_path_ = this->get_parameter("fifo_path").as_string();
+    auto height_desc = rcl_interfaces::msg::ParameterDescriptor{};
+    height_desc.description = "Rendering height (px). Env: NVIZ_HEIGHT";
+    this->declare_parameter("height", 480, height_desc);
+
+    auto fps_desc = rcl_interfaces::msg::ParameterDescriptor{};
+    fps_desc.description = "Frames per second. Env: NVIZ_FPS";
+    this->declare_parameter("fps", 30.0, fps_desc);
+
+    auto fifo_desc = rcl_interfaces::msg::ParameterDescriptor{};
+    fifo_desc.description = "Path to output raw BGRA pipe. Env: NVIZ_FIFO_PATH";
+    this->declare_parameter("fifo_path", "/tmp/nano_fifo", fifo_desc);
+
+    // 2. Fetch using Environment Variables first, fallback to ROS parameters
+    width_ = get_env_or_param("NVIZ_WIDTH", "width");
+    height_ = get_env_or_param("NVIZ_HEIGHT", "height");
+    fps_ = get_env_or_param_double("NVIZ_FPS", "fps");
+    fifo_path_ = get_env_or_param_str("NVIZ_FIFO_PATH", "fifo_path");
 
     buffer_.resize(width_ * height_ * 4, 0);     // BGRA
 
@@ -419,6 +432,8 @@ public:
     RCLCPP_INFO(
       this->get_logger(), "Nano-Viz initialized (%dx%d @ %.1f fps)", width_, height_,
       fps_);
+    RCLCPP_INFO(
+      this->get_logger(), "Streaming to: %s", fifo_path_.c_str());
   }
 
   ~NanoVizNode()
@@ -429,6 +444,27 @@ public:
   }
 
 private:
+  int get_env_or_param(const char * env_name, const std::string & param_name)
+  {
+    const char * env_val = std::getenv(env_name);
+    if (env_val) {return std::atoi(env_val);}
+    return this->get_parameter(param_name).as_int();
+  }
+
+  double get_env_or_param_double(const char * env_name, const std::string & param_name)
+  {
+    const char * env_val = std::getenv(env_name);
+    if (env_val) {return std::atof(env_val);}
+    return this->get_parameter(param_name).as_double();
+  }
+
+  std::string get_env_or_param_str(const char * env_name, const std::string & param_name)
+  {
+    const char * env_val = std::getenv(env_name);
+    if (env_val) {return std::string(env_val);}
+    return this->get_parameter(param_name).as_string();
+  }
+
   void event_callback(const std_msgs::msg::String::SharedPtr msg)
   {
     try {
