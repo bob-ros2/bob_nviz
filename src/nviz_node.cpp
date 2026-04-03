@@ -56,14 +56,22 @@ enum Alignment
   ALIGN_RIGHT
 };
 
+enum TerminalMode
+{
+  MODE_DEFAULT,
+  MODE_CLEAR_ON_NEW,
+  MODE_APPEND_NEWLINE
+};
+
 class NanoTerminal
 {
 public:
   NanoTerminal(
     Rect area, Color text_color, Color bg_color, int scale, size_t line_limit,
-    Alignment align, std::string title_in = "", int columns = 0)
+    Alignment align, std::string title_in = "", int columns = 0,
+    TerminalMode mode = MODE_DEFAULT)
   : area_(area), text_color_(text_color), bg_color_(bg_color), scale_(scale), align_(align),
-    columns_override_(columns), line_limit_(line_limit), utf8_lead_(0)
+    columns_override_(columns), line_limit_(line_limit), mode_(mode), utf8_lead_(0)
   {
     lines_.push_back("");
     update_wrap_width();
@@ -75,6 +83,10 @@ public:
   void append(const std::string & text)
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (mode_ == MODE_CLEAR_ON_NEW && !text.empty()) {
+      lines_.clear();
+      lines_.push_back("");
+    }
     for (unsigned char c : text) {
       if (utf8_lead_ == 0) {
         if (c == 0xC2 || c == 0xC3) {
@@ -88,9 +100,25 @@ public:
         utf8_lead_ = 0;
       }
     }
+    if (mode_ == MODE_APPEND_NEWLINE && !text.empty()) {
+      process_char('\n');
+    }
     while (lines_.size() > line_limit_) {
       lines_.pop_front();
     }
+  }
+
+  void set_mode(TerminalMode mode)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    mode_ = mode;
+  }
+
+  void clear()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    lines_.clear();
+    lines_.push_back("");
   }
 
   void set_title(const std::string & title)
@@ -229,6 +257,7 @@ public:
     columns_override_ = cols;
     update_wrap_width();
   }
+  TerminalMode get_mode() const {return mode_;}
 
 private:
   void update_wrap_width()
@@ -293,6 +322,7 @@ private:
   std::string title_;
   std::deque<std::string> lines_;
   std::mutex mutex_;
+  TerminalMode mode_;
   uint8_t utf8_lead_;
 };
 
@@ -397,6 +427,7 @@ public:
       std::chrono::milliseconds(
         static_cast<int>(1000.0 / fps_)), std::bind(&NanoVizNode::render_loop, this));
     RCLCPP_INFO(this->get_logger(), "Nano-Viz: %dx%d @ %.1f fps", width_, height_, fps_);
+    publish_state();
   }
   ~NanoVizNode()
   {
@@ -452,6 +483,8 @@ private:
           int fs = cfg.value("font_size", 16);
           int sc = std::max(1, fs / 8);
           int columns = cfg.value("columns", 0);
+          double expire = cfg.value("expire", 0.0);
+          rclcpp::Duration lifetime = rclcpp::Duration::from_seconds(expire);
           Alignment al = ALIGN_LEFT;
           std::string als = cfg.value("align", "left");
           if (als == "center") {
@@ -460,6 +493,15 @@ private:
             al = ALIGN_RIGHT;
           }
           std::string tit = cfg.value("title", "");
+          std::string ms = cfg.value("mode", "default");
+          TerminalMode tm = MODE_DEFAULT;
+          if (ms == "clear_on_new") {
+            tm = MODE_CLEAR_ON_NEW;
+          } else if (ms == "append_newline") {
+            tm = MODE_APPEND_NEWLINE;
+          }
+          std::string initial_text = cfg.value("text", "");
+
           {
             std::lock_guard<std::mutex> lock_str(mtx_);
             if (terminals_.count(id)) {
@@ -469,11 +511,21 @@ private:
               terminals_[id]->terminal->set_align(al);
               terminals_[id]->terminal->set_title(tit);
               terminals_[id]->terminal->set_columns(columns);
+              terminals_[id]->terminal->set_mode(tm);
+              terminals_[id]->lifetime = lifetime;
+              if (!initial_text.empty()) {
+                terminals_[id]->terminal->append(initial_text);
+              }
             } else {
               auto nt = std::make_shared<TermInst>();
               nt->id = id; nt->topic = top;
+              nt->creation_time = this->now();
+              nt->lifetime = lifetime;
               nt->terminal =
-                std::make_unique<NanoTerminal>(area, tc, bc, sc, 100, al, tit, columns);
+                std::make_unique<NanoTerminal>(area, tc, bc, sc, 100, al, tit, columns, tm);
+              if (!initial_text.empty()) {
+                nt->terminal->append(initial_text);
+              }
               if (!top.empty()) {
                 nt->sub = this->create_subscription<std_msgs::msg::String>(
                   top, queue_size_,
@@ -489,6 +541,8 @@ private:
           }
         } else if (typ == "Bitmap") {
           int dep = cfg.value("depth", 1);
+          double expire = cfg.value("expire", 0.0);
+          rclcpp::Duration lifetime = rclcpp::Duration::from_seconds(expire);
           auto fjc = cfg.value("color", cfg.value("text_color", json::array({255, 255, 255, 255})));
           Color fg = {(uint8_t)fjc[0], (uint8_t)fjc[1], (uint8_t)fjc[2], (uint8_t)fjc[3]};
           {
@@ -496,9 +550,12 @@ private:
             if (bitmaps_.count(id)) {
               bitmaps_[id]->canvas->set_area(area);
               bitmaps_[id]->canvas->set_color(fg);
+              bitmaps_[id]->lifetime = lifetime;
             } else {
               auto bc = std::make_shared<BitInst>();
               bc->id = id; bc->topic = top;
+              bc->creation_time = this->now();
+              bc->lifetime = lifetime;
               bc->canvas = std::make_unique<NanoCanvas>(area, fg, dep);
               if (!top.empty()) {
                 bc->sub_bin = this->create_subscription<std_msgs::msg::UInt8MultiArray>(
@@ -538,25 +595,61 @@ private:
         changed = true;
       }
       if (changed) {
-        json j = json::array();
-        std::lock_guard<std::mutex> lock_change(mtx_);
-        for (auto const & [i, t] : terminals_) {
-          j.push_back({{"id", i}, {"type", "String"}, {"topic", t->topic}});
-        }
-        for (auto const & [i, b] : bitmaps_) {
-          j.push_back({{"id", i}, {"type", "Bitmap"}, {"topic", b->topic}});
-        }
-        std_msgs::msg::String m;
-        m.data = j.dump();
-        events_changed_pub_->publish(m);
+        publish_state();
       }
     } catch (const std::exception & e) {
       RCLCPP_ERROR(this->get_logger(), "JSON: %s", e.what());
     }
   }
 
+  void publish_state()
+  {
+    json j = json::array();
+    std::lock_guard<std::mutex> lock_change(mtx_);
+    for (auto const & [i, t] : terminals_) {
+      j.push_back(
+        {{"id", i}, {"type", "String"}, {"topic", t->topic}, {"expire", t->lifetime.seconds()}});
+    }
+    for (auto const & [i, b] : bitmaps_) {
+      j.push_back(
+        {{"id", i}, {"type", "Bitmap"}, {"topic", b->topic}, {"expire", b->lifetime.seconds()}});
+    }
+    std_msgs::msg::String m;
+    m.data = j.dump();
+    events_changed_pub_->publish(m);
+  }
+
   void render_loop()
   {
+    bool changed = false;
+    {
+      auto now = this->now();
+      std::lock_guard<std::mutex> lock_expire(mtx_);
+      for (auto it = terminals_.begin(); it != terminals_.end(); ) {
+        if (it->second->lifetime.nanoseconds() > 0 &&
+          (it->second->creation_time + it->second->lifetime) < now)
+        {
+          it = terminals_.erase(it);
+          changed = true;
+        } else {
+          ++it;
+        }
+      }
+      for (auto it = bitmaps_.begin(); it != bitmaps_.end(); ) {
+        if (it->second->lifetime.nanoseconds() > 0 &&
+          (it->second->creation_time + it->second->lifetime) < now)
+        {
+          it = bitmaps_.erase(it);
+          changed = true;
+        } else {
+          ++it;
+        }
+      }
+    }
+    if (changed) {
+      publish_state();
+    }
+
     std::fill(buffer_.begin(), buffer_.end(), 0);
     {
       std::lock_guard<std::mutex> lock_render(mtx_);
@@ -604,6 +697,8 @@ private:
     std::string id, topic;
     std::unique_ptr<NanoTerminal> terminal;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sub;
+    rclcpp::Time creation_time;
+    rclcpp::Duration lifetime{0, 0};
   };
   struct BitInst
   {
@@ -611,6 +706,8 @@ private:
     std::unique_ptr<NanoCanvas> canvas;
     rclcpp::Subscription<std_msgs::msg::UInt8MultiArray>::SharedPtr sub_bin;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sub_hex;
+    rclcpp::Time creation_time;
+    rclcpp::Duration lifetime{0, 0};
   };
 
   int width_, height_, queue_size_;
