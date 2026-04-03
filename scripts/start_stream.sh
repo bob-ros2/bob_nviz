@@ -25,6 +25,13 @@ export NVIZ_HEIGHT="${NVIZ_HEIGHT:-480}"
 export NVIZ_FPS="${NVIZ_FPS:-30}"
 export NVIZ_FIFO_PATH="${NVIZ_FIFO_PATH:-/tmp/nano_fifo}"
 
+# --- ROS Namespace Handling ---
+# If NAMESPACE is set, export it as ROS_NAMESPACE so all nodes use it.
+export ROS_NAMESPACE="${NAMESPACE:-${ROS_NAMESPACE:-}}"
+if [[ -n "$ROS_NAMESPACE" ]]; then
+    echo "[$(date)] ROS Namespace: $ROS_NAMESPACE"
+fi
+
 # Audio pipes (consistent with sdlviz/bob_audio)
 export AUDIO_PIPE="${AUDIO_PIPE:-/tmp/audio_pipe}"
 export AUDIO_MASTER_PATH="${AUDIO_MASTER_PATH:-/tmp/audio_master_pipe}"

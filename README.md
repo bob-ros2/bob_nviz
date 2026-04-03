@@ -155,6 +155,7 @@ cat .env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `NAMESPACE` | - | Optional ROS 2 namespace (e.g., `/eva`) applied to all nodes. |
 | `TWITCH_STREAM_KEY` | - | Your Twitch Stream Key (passed as environment). |
 | `TWITCH_STREAM_KEY_FILE` | - | Path to a file containing the Stream Key (e.g., `/run/secrets/twitch_key`). |
 | `INGEST_SERVER` | `rtmp://live-fra.twitch.tv/app/` | Twitch ingest server URL. |
