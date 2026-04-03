@@ -1,8 +1,8 @@
 # ROS Package [bob_nviz](https://github.com/bob-ros2/bob_nviz)
 
-[![CI – Build & Test](https://github.com/bob-ros2/bob_nviz/actions/workflows/ros2_ci.yaml/badge.svg)](https://github.com/bob-ros2/bob_nviz/actions/workflows/ros2_ci.yaml)
-[![Docker amd64](https://img.shields.io/badge/docker-amd64-blue?logo=docker)](https://github.com/bob-ros2/bob_nviz/pkgs/container/bob-nviz)
-[![Docker arm64](https://img.shields.io/badge/docker-arm64-orange?logo=docker)](https://github.com/bob-ros2/bob_nviz/pkgs/container/bob-nviz)
+[![CI](https://github.com/bob-ros2/bob_nviz/actions/workflows/ros2_ci.yaml/badge.svg)](https://github.com/bob-ros2/bob_nviz/actions/workflows/ros2_ci.yaml)
+[![amd64](https://img.shields.io/github/actions/workflow/status/bob-ros2/bob_nviz/docker.yml?label=amd64&logo=docker)](https://github.com/bob-ros2/bob_nviz/actions/workflows/docker.yml)
+[![arm64](https://img.shields.io/github/actions/workflow/status/bob-ros2/bob_nviz/docker.yml?label=arm64&logo=docker)](https://github.com/bob-ros2/bob_nviz/actions/workflows/docker.yml)
 
 **Ultra-lightweight, resource-efficient Software Renderer for ROS 2.**
 
