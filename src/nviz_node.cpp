@@ -482,7 +482,6 @@ private:
         std::string act = cfg.value("action", "add");
         std::string typ = cfg.value("type", "String");
         std::string id = cfg.value("id", "");
-        
         if (id.empty()) {
           RCLCPP_ERROR(this->get_logger(), "Missing mandatory 'id' field");
           continue;
@@ -494,15 +493,20 @@ private:
         }
 
         if (act != "add") {
-          RCLCPP_ERROR(this->get_logger(), "Unknown action '%s' for id '%s'", act.c_str(), id.c_str());
+          RCLCPP_ERROR(
+            this->get_logger(), "Unknown action '%s' for id '%s'", act.c_str(),
+            id.c_str());
           continue;
         }
 
         // Validate area according to README (must be array [x,y,w,h])
         if (!cfg.contains("area") || !cfg["area"].is_array() || cfg["area"].size() != 4) {
-          RCLCPP_ERROR(this->get_logger(), "Invalid or missing 'area' array for id '%s' (Expected [x,y,w,h])", id.c_str());
+          RCLCPP_ERROR(
+            this->get_logger(),
+            "Invalid or missing 'area' array for id '%s' (Expected [x,y,w,h])", id.c_str());
           if (cfg.contains("position")) {
-             RCLCPP_ERROR(this->get_logger(), "Found disallowed field 'position'. Use 'area' instead!");
+            RCLCPP_ERROR(
+              this->get_logger(), "Found disallowed field 'position'. Use 'area' instead!");
           }
           continue;
         }
@@ -511,21 +515,28 @@ private:
 
         if (typ == "String") {
           // Check for forbidden aliases
-          if (cfg.contains("backgroundColor") || cfg.contains("textColor") || cfg.contains("fontSize")) {
-            RCLCPP_ERROR(this->get_logger(), "Forbidden field names detected (backgroundColor/textColor/fontSize). Use README conventions!");
+          if (cfg.contains("backgroundColor") || cfg.contains("textColor") ||
+            cfg.contains("fontSize"))
+          {
+            RCLCPP_ERROR(
+              this->get_logger(),
+              "Forbidden field names detected (backgroundColor/textColor/fontSize). "
+              "Use README conventions!");
           }
 
           auto tcj = cfg.value("text_color", json::array({255, 255, 255, 255}));
           auto bcj = cfg.value("bg_color", json::array({0, 0, 0, 150}));
-          
           if (!tcj.is_array() || !bcj.is_array()) {
-             RCLCPP_ERROR(this->get_logger(), "Colors must be arrays [r,g,b,a] for id '%s'", id.c_str());
-             continue;
+            RCLCPP_ERROR(
+              this->get_logger(), "Colors must be arrays [r,g,b,a] for id '%s'",
+              id.c_str());
+            continue;
           }
 
-          Color tc = {(uint8_t)tcj[0], (uint8_t)tcj[1], (uint8_t)tcj[2], static_cast<uint8_t>(tcj.size() > 3 ? (uint8_t)tcj[3] : 255)};
-          Color bc = {(uint8_t)bcj[0], (uint8_t)bcj[1], (uint8_t)bcj[2], static_cast<uint8_t>(bcj.size() > 3 ? (uint8_t)bcj[3] : 255)};
-          
+          Color tc = {(uint8_t)tcj[0], (uint8_t)tcj[1], (uint8_t)tcj[2],
+            static_cast<uint8_t>(tcj.size() > 3 ? (uint8_t)tcj[3] : 255)};
+          Color bc = {(uint8_t)bcj[0], (uint8_t)bcj[1], (uint8_t)bcj[2],
+            static_cast<uint8_t>(bcj.size() > 3 ? (uint8_t)bcj[3] : 255)};
           int fs = cfg.value("font_size", 16);
           int sc = std::max(1, fs / 8);
           int columns = cfg.value("columns", 0);
@@ -593,13 +604,16 @@ private:
           double expire = cfg.value("expire", 0.0);
           rclcpp::Duration lifetime = rclcpp::Duration::from_seconds(expire);
           auto fjc = cfg.value("color", json::array({255, 255, 255, 255}));
-          
+
           if (!fjc.is_array()) {
-             RCLCPP_ERROR(this->get_logger(), "Color must be an array [r,g,b,a] for id '%s'", id.c_str());
-             continue;
+            RCLCPP_ERROR(
+              this->get_logger(), "Color must be an array [r,g,b,a] for id '%s'",
+              id.c_str());
+            continue;
           }
 
-          Color fg = {(uint8_t)fjc[0], (uint8_t)fjc[1], (uint8_t)fjc[2], static_cast<uint8_t>(fjc.size() > 3 ? (uint8_t)fjc[3] : 255)};
+          Color fg = {(uint8_t)fjc[0], (uint8_t)fjc[1], (uint8_t)fjc[2],
+            static_cast<uint8_t>(fjc.size() > 3 ? (uint8_t)fjc[3] : 255)};
           std::string top = cfg.value("topic", "");
           {
             std::lock_guard<std::mutex> lock_bmp(mtx_);
@@ -650,7 +664,9 @@ private:
             }
           }
         } else {
-           RCLCPP_ERROR(this->get_logger(), "Unknown type '%s' for id '%s'", typ.c_str(), id.c_str());
+          RCLCPP_ERROR(
+            this->get_logger(), "Unknown type '%s' for id '%s'", typ.c_str(),
+            id.c_str());
         }
         changed = true;
       }
@@ -734,7 +750,7 @@ private:
           written += static_cast<size_t>(w);
         } else if (w == -1) {
           if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // Buffer full, wait briefly and keep trying to finish THIS frame 
+            // Buffer full, wait briefly and keep trying to finish THIS frame
             // This is safe now because we use MultiThreadedExecutor for topics
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             continue;
