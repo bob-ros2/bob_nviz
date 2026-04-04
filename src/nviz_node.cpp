@@ -433,7 +433,7 @@ public:
 
     events_changed_pub_ = this->create_publisher<std_msgs::msg::String>(
       "events_changed", rclcpp::QoS(10).transient_local());
-    
+
     event_sub_ = this->create_subscription<std_msgs::msg::String>(
       "events", 10, std::bind(&NanoVizNode::event_callback, this, std::placeholders::_1),
       sub_options);
@@ -441,7 +441,7 @@ public:
     timer_ = this->create_wall_timer(
       std::chrono::milliseconds(
         static_cast<int>(1000.0 / fps_)), std::bind(&NanoVizNode::render_loop, this),
-        cb_group_timer_);
+      cb_group_timer_);
     RCLCPP_INFO(this->get_logger(), "Nano-Viz: %dx%d @ %.1f fps", width_, height_, fps_);
     publish_state();
   }
