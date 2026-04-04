@@ -33,6 +33,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
+#include <thread>
+#include <atomic>
 
 #include "bob_nviz/font8x8.h"
 
@@ -126,9 +128,6 @@ public:
     std::lock_guard<std::mutex> lock(mutex_);
     mode_ = mode;
   }
-
-
-
   void set_title(const std::string & title)
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -397,6 +396,123 @@ private:
   Rect area_; Color fg_; int depth_; std::vector<uint8_t> data_; std::mutex mutex_;
 };
 
+class NanoVideo
+{
+public:
+  NanoVideo(const std::string & pipe_path, Rect area, int src_w, int src_h, const std::string & encoding = "rgb")
+  : pipe_path_(pipe_path), area_(area), src_w_(src_w), src_h_(src_h), encoding_(encoding),
+    running_(true), frame_ready_(false)
+  {
+    frame_buffer_.resize(src_w_ * src_h_ * 3, 0); // RGB24 or BGR24
+    worker_ = std::thread(&NanoVideo::pipe_reader, this);
+  }
+
+  ~NanoVideo()
+  {
+    running_ = false;
+    if (worker_.joinable()) {
+      worker_.join();
+    }
+  }
+
+  void draw(std::vector<uint8_t> & buffer, int width, int height);
+
+  void set_area(Rect area) {area_ = area;}
+
+private:
+  void pipe_reader()
+  {
+    int fd = -1;
+    while (running_) {
+      if (fd == -1) {
+        fd = open(pipe_path_.c_str(), O_RDONLY | O_NONBLOCK);
+        if (fd == -1) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(500));
+          continue;
+        }
+      }
+
+      std::vector<uint8_t> tmp(src_w_ * src_h_ * 3);
+      size_t read_bytes = 0;
+      bool ok = true;
+      while (read_bytes < tmp.size() && running_) {
+        ssize_t n = read(fd, tmp.data() + read_bytes, tmp.size() - read_bytes);
+        if (n > 0) {
+          read_bytes += n;
+        } else if (n == 0) {
+          close(fd); fd = -1; ok = false; break;
+        } else {
+          if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+          }
+          close(fd); fd = -1; ok = false; break;
+        }
+      }
+
+      if (ok && read_bytes == tmp.size()) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        frame_buffer_ = std::move(tmp);
+        frame_ready_ = true;
+      }
+    }
+    if (fd != -1) {
+      close(fd);
+    }
+  }
+
+  std::string pipe_path_;
+  Rect area_;
+  int src_w_, src_h_;
+  std::string encoding_;
+  std::vector<uint8_t> frame_buffer_;
+  std::mutex mutex_;
+  std::thread worker_;
+  std::atomic<bool> running_;
+  std::atomic<bool> frame_ready_;
+};
+
+void NanoVideo::draw(std::vector<uint8_t> & buffer, int width, int height)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!frame_ready_) {
+    return;
+  }
+
+  bool swap = (encoding_ == "bgr");
+
+  for (int y = 0; y < src_h_; ++y) {
+    int dy = area_.y + y;
+    if (dy < 0 || dy >= height) {
+      continue;
+    }
+
+    int start_x = std::max(0, area_.x);
+    int end_x = std::min(area_.x + src_w_, width);
+    int copy_w = end_x - start_x;
+    if (copy_w <= 0) {
+      continue;
+    }
+
+    size_t src_off = (y * src_w_ + (start_x - area_.x)) * 3;
+    size_t dst_off = (dy * width + start_x) * 3;
+
+    if (swap) {
+      // Manual copy with R/B swap
+      for (int i = 0; i < copy_w; ++i) {
+        size_t s = src_off + i * 3;
+        size_t d = dst_off + i * 3;
+        buffer[d] = frame_buffer_[s + 2];     // Dest R <- Src B-channel is actually R in BGR
+        buffer[d + 1] = frame_buffer_[s + 1]; // G <- G
+        buffer[d + 2] = frame_buffer_[s];     // Dest B <- Src R-channel is actually B in BGR
+      }
+    } else {
+      // Direct fast memcpy
+      std::memcpy(buffer.data() + dst_off, frame_buffer_.data() + src_off, copy_w * 3);
+    }
+  }
+}
+
 class NanoVizNode : public rclcpp::Node
 {
 public:
@@ -491,7 +607,10 @@ private:
 
         if (act == "remove") {
           std::lock_guard<std::mutex> lock_rem(mtx_);
-          terminals_.erase(id); bitmaps_.erase(id); changed = true; continue;
+          terminals_.erase(id); bitmaps_.erase(id); 
+          videos_.erase(id);
+          video_order_.erase(std::remove(video_order_.begin(), video_order_.end(), id), video_order_.end());
+          changed = true; continue;
         }
 
         if (act != "add") {
@@ -665,6 +784,54 @@ private:
               bitmaps_[id] = bc;
             }
           }
+        } else if (typ == "VideoStream") {
+          if (!cfg.contains("topic") || !cfg.contains("source_width") ||
+            !cfg.contains("source_height"))
+          {
+            RCLCPP_ERROR(
+              this->get_logger(),
+              "VideoStream missing topic/source_width/height for id '%s'", id.c_str());
+            continue;
+          }
+          std::string pipe = cfg["topic"];
+          int sw = cfg["source_width"];
+          int sh = cfg["source_height"];
+          double expire = cfg.value("expire", 0.0);
+        } else if (typ == "VideoStream") {
+          if (!cfg.contains("topic") || !cfg.contains("source_width") ||
+            !cfg.contains("source_height"))
+          {
+            RCLCPP_ERROR(
+              this->get_logger(),
+              "VideoStream missing topic/source_width/height for id '%s'", id.c_str());
+            continue;
+          }
+          std::string pipe = cfg["topic"];
+          int sw = cfg["source_width"];
+          int sh = cfg["source_height"];
+          std::string enc = cfg.value("encoding", "rgb");
+          if (enc != "rgb" && enc != "bgr") {
+            RCLCPP_ERROR(this->get_logger(), "Unknown encoding '%s'. Using 'rgb'", enc.c_str());
+            enc = "rgb";
+          }
+          double expire = cfg.value("expire", 0.0);
+          rclcpp::Duration lifetime = rclcpp::Duration::from_seconds(expire);
+
+          {
+            std::lock_guard<std::mutex> lock_vid(mtx_);
+            if (videos_.count(id)) {
+              videos_[id]->video->set_area(area);
+              videos_[id]->lifetime = lifetime;
+            } else {
+              auto vi = std::make_shared<VideoInst>();
+              vi->id = id; vi->pipe_path = pipe;
+              vi->creation_time = this->now();
+              vi->lifetime = lifetime;
+              vi->video = std::make_unique<NanoVideo>(pipe, area, sw, sh, enc);
+              videos_[id] = vi;
+              video_order_.push_back(id);
+            }
+          }
         } else {
           RCLCPP_ERROR(
             this->get_logger(), "Unknown type '%s' for id '%s'", typ.c_str(),
@@ -691,6 +858,11 @@ private:
     for (auto const & [i, b] : bitmaps_) {
       j.push_back(
         {{"id", i}, {"type", "Bitmap"}, {"topic", b->topic}, {"expire", b->lifetime.seconds()}});
+    }
+    for (auto const & [i, v] : videos_) {
+      j.push_back(
+        {{"id", i}, {"type", "VideoStream"}, {"topic", v->pipe_path},
+          {"expire", v->lifetime.seconds()}});
     }
     std_msgs::msg::String m;
     m.data = j.dump();
@@ -723,6 +895,19 @@ private:
           ++it;
         }
       }
+      for (auto it = videos_.begin(); it != videos_.end(); ) {
+        if (it->second->lifetime.nanoseconds() > 0 &&
+          (it->second->creation_time + it->second->lifetime) < now)
+        {
+          std::string id = it->first;
+          it = videos_.erase(it);
+          video_order_.erase(std::remove(video_order_.begin(), video_order_.end(), id),
+            video_order_.end());
+          changed = true;
+        } else {
+          ++it;
+        }
+      }
     }
     if (changed) {
       publish_state();
@@ -730,12 +915,18 @@ private:
 
     std::fill(buffer_.begin(), buffer_.end(), 0);
     {
-      std::lock_guard<std::mutex> lock_render(mtx_);
-      for (auto const & [id, t] : terminals_) {
-        t->terminal->draw(buffer_, width_, height_);
+      std::lock_guard<std::mutex> lock_draw(mtx_);
+      // Render components: Video (Bottom) -> Bitmaps -> Terminals (Top)
+      for (const auto & id : video_order_) {
+        if (videos_.count(id)) {
+          videos_[id]->video->draw(buffer_, width_, height_);
+        }
       }
       for (auto const & [id, b] : bitmaps_) {
         b->canvas->draw(buffer_, width_, height_);
+      }
+      for (auto const & [id, t] : terminals_) {
+        t->terminal->draw(buffer_, width_, height_);
       }
     }
     if (fifo_fd_ == -1) {
@@ -785,6 +976,13 @@ private:
     rclcpp::Time creation_time;
     rclcpp::Duration lifetime{0, 0};
   };
+  struct VideoInst
+  {
+    std::string id, pipe_path;
+    std::unique_ptr<NanoVideo> video;
+    rclcpp::Time creation_time;
+    rclcpp::Duration lifetime{0, 0};
+  };
 
   int width_, height_, queue_size_;
   double fps_;
@@ -793,6 +991,8 @@ private:
   std::vector<uint8_t> buffer_;
   std::map<std::string, std::shared_ptr<TermInst>> terminals_;
   std::map<std::string, std::shared_ptr<BitInst>> bitmaps_;
+  std::map<std::string, std::shared_ptr<VideoInst>> videos_;
+  std::vector<std::string> video_order_;
   std::mutex mtx_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr events_changed_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr event_sub_;
