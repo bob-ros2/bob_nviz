@@ -91,7 +91,16 @@ Displays raw image data (1-bit or 8-bit).
 - `topic + "/hex"`: Hex-string topic (`std_msgs/String`).
 - `depth` (int): `1` (1-bit mask) or `8` (8-bit grayscale).
 - `color`: `[R, G, B, A]` for the foreground.
+### 3. `VideoStream` (FIFO)
+Displays raw video buffers from a pipe (headless streaming).
+- `topic` (string): Absolute path to the FIFO pipe (e.g., `/tmp/stream_pipe`).
+- `source_width`, `source_height` (int): Dimensions of the input raw frames.
+- `encoding` (string, optional): `rgb` (default) or `bgr`.
+- `area` (array): `[x, y, w, h]` for placement. (Note: Scaling is not supported; `w/h` should match source dimensions).
 
+### 4. Layer Actions
+- `action`: `add` (create/update) or `remove` (delete by `id`).
+- `id`: Unique identifier for the layer (mandatory for updates/removals).
 
 ## Examples (`ros2 topic pub`)
 
@@ -112,6 +121,12 @@ ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"Bitma
 
 # Send data
 ros2 topic pub --once /ui/heart/hex std_msgs/msg/String "data: '0C301E783FfC7FfE7FfE7FfE3FfC1Ff80fF007E003C0018'"
+```
+
+### Add a Video Stream Overlay (FIFO)
+```bash
+# Register a 320x240 video stream from a pipe (using BGR encoding for OpenCV compatibility)
+ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"VideoStream\", \"id\":\"cam\", \"topic\":\"/tmp/overlay_pipe\", \"area\":[500, 20, 320, 240], \"source_width\":320, \"source_height\":240, \"encoding\":\"bgr\"}]"'
 ```
 
 ### Remove a Layer
