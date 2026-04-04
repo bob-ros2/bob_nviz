@@ -28,13 +28,13 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <thread>
+#include <atomic>
 
 #include "nlohmann/json.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
-#include <thread>
-#include <atomic>
 
 #include "bob_nviz/font8x8.h"
 
@@ -399,11 +399,13 @@ private:
 class NanoVideo
 {
 public:
-  NanoVideo(const std::string & pipe_path, Rect area, int src_w, int src_h, const std::string & encoding = "rgb")
+  NanoVideo(
+    const std::string & pipe_path, Rect area, int src_w, int src_h,
+    const std::string & encoding = "rgb")
   : pipe_path_(pipe_path), area_(area), src_w_(src_w), src_h_(src_h), encoding_(encoding),
     running_(true), frame_ready_(false)
   {
-    frame_buffer_.resize(src_w_ * src_h_ * 3, 0); // RGB24 or BGR24
+    frame_buffer_.resize(src_w_ * src_h_ * 3, 0);  // RGB24 or BGR24
     worker_ = std::thread(&NanoVideo::pipe_reader, this);
   }
 
@@ -502,9 +504,9 @@ void NanoVideo::draw(std::vector<uint8_t> & buffer, int width, int height)
       for (int i = 0; i < copy_w; ++i) {
         size_t s = src_off + i * 3;
         size_t d = dst_off + i * 3;
-        buffer[d] = frame_buffer_[s + 2];     // Dest R <- Src B-channel is actually R in BGR
-        buffer[d + 1] = frame_buffer_[s + 1]; // G <- G
-        buffer[d + 2] = frame_buffer_[s];     // Dest B <- Src R-channel is actually B in BGR
+        buffer[d] = frame_buffer_[s + 2];      // Dest R <- Src B-channel is actually R in BGR
+        buffer[d + 1] = frame_buffer_[s + 1];  // G <- G
+        buffer[d + 2] = frame_buffer_[s];      // Dest B <- Src R-channel is actually B in BGR
       }
     } else {
       // Direct fast memcpy
@@ -607,9 +609,12 @@ private:
 
         if (act == "remove") {
           std::lock_guard<std::mutex> lock_rem(mtx_);
-          terminals_.erase(id); bitmaps_.erase(id); 
+          terminals_.erase(id); bitmaps_.erase(id);
           videos_.erase(id);
-          video_order_.erase(std::remove(video_order_.begin(), video_order_.end(), id), video_order_.end());
+          video_order_.erase(
+            std::remove(
+              video_order_.begin(), video_order_.end(),
+              id), video_order_.end());
           changed = true; continue;
         }
 
@@ -901,7 +906,8 @@ private:
         {
           std::string id = it->first;
           it = videos_.erase(it);
-          video_order_.erase(std::remove(video_order_.begin(), video_order_.end(), id),
+          video_order_.erase(
+            std::remove(video_order_.begin(), video_order_.end(), id),
             video_order_.end());
           changed = true;
         } else {
