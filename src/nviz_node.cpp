@@ -523,8 +523,8 @@ private:
              continue;
           }
 
-          Color tc = {(uint8_t)tcj[0], (uint8_t)tcj[1], (uint8_t)tcj[2], (uint8_t)(tcj.size() > 3 ? tcj[3] : 255)};
-          Color bc = {(uint8_t)bcj[0], (uint8_t)bcj[1], (uint8_t)bcj[2], (uint8_t)(bcj.size() > 3 ? bcj[3] : 255)};
+          Color tc = {(uint8_t)tcj[0], (uint8_t)tcj[1], (uint8_t)tcj[2], static_cast<uint8_t>(tcj.size() > 3 ? (uint8_t)tcj[3] : 255)};
+          Color bc = {(uint8_t)bcj[0], (uint8_t)bcj[1], (uint8_t)bcj[2], static_cast<uint8_t>(bcj.size() > 3 ? (uint8_t)bcj[3] : 255)};
           
           int fs = cfg.value("font_size", 16);
           int sc = std::max(1, fs / 8);
@@ -599,7 +599,7 @@ private:
              continue;
           }
 
-          Color fg = {(uint8_t)fjc[0], (uint8_t)fjc[1], (uint8_t)fjc[2], (uint8_t)(fjc.size() > 3 ? fjc[3] : 255)};
+          Color fg = {(uint8_t)fjc[0], (uint8_t)fjc[1], (uint8_t)fjc[2], static_cast<uint8_t>(fjc.size() > 3 ? (uint8_t)fjc[3] : 255)};
           std::string top = cfg.value("topic", "");
           {
             std::lock_guard<std::mutex> lock_bmp(mtx_);
