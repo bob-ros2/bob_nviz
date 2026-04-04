@@ -21,7 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Workspace setup
 WORKDIR /ros2_ws/src
 
-# 1. Install bob_audio from Git
+# 1. Install bob_audio# Clone dependencies (force refresh with a build arg if needed)
+ARG BOB_AUDIO_REVISION=unknown
 RUN git clone --depth 1 https://github.com/bob-ros2/bob_audio.git
 
 # 2. Copy current bob_nviz source
