@@ -425,13 +425,23 @@ public:
     queue_size_ = get_env_or_param("NVIZ_QUEUE_SIZE", "queue_size");
 
     buffer_.resize(width_ * height_ * 4, 0);
+    cb_group_reentrant_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    cb_group_timer_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+    auto sub_options = rclcpp::SubscriptionOptions();
+    sub_options.callback_group = cb_group_reentrant_;
+
     events_changed_pub_ = this->create_publisher<std_msgs::msg::String>(
       "events_changed", rclcpp::QoS(10).transient_local());
+    
     event_sub_ = this->create_subscription<std_msgs::msg::String>(
-      "events", 10, std::bind(&NanoVizNode::event_callback, this, std::placeholders::_1));
+      "events", 10, std::bind(&NanoVizNode::event_callback, this, std::placeholders::_1),
+      sub_options);
+
     timer_ = this->create_wall_timer(
       std::chrono::milliseconds(
-        static_cast<int>(1000.0 / fps_)), std::bind(&NanoVizNode::render_loop, this));
+        static_cast<int>(1000.0 / fps_)), std::bind(&NanoVizNode::render_loop, this),
+        cb_group_timer_);
     RCLCPP_INFO(this->get_logger(), "Nano-Viz: %dx%d @ %.1f fps", width_, height_, fps_);
     publish_state();
   }
@@ -533,6 +543,8 @@ private:
                 nt->terminal->append(initial_text);
               }
               if (!top.empty()) {
+                auto sub_options = rclcpp::SubscriptionOptions();
+                sub_options.callback_group = cb_group_reentrant_;
                 nt->sub = this->create_subscription<std_msgs::msg::String>(
                   top, queue_size_,
                   [this, id](const std_msgs::msg::String::SharedPtr m) {
@@ -540,7 +552,7 @@ private:
                     if (terminals_.count(id)) {
                       terminals_[id]->terminal->append(m->data);
                     }
-                  });
+                  }, sub_options);
               }
               terminals_[id] = nt;
             }
@@ -564,6 +576,8 @@ private:
               bc->lifetime = lifetime;
               bc->canvas = std::make_unique<NanoCanvas>(area, fg, dep);
               if (!top.empty()) {
+                auto sub_options = rclcpp::SubscriptionOptions();
+                sub_options.callback_group = cb_group_reentrant_;
                 bc->sub_bin = this->create_subscription<std_msgs::msg::UInt8MultiArray>(
                   top,
                   queue_size_,
@@ -572,7 +586,7 @@ private:
                     if (bitmaps_.count(id)) {
                       bitmaps_[id]->canvas->update_data(m->data);
                     }
-                  });
+                  }, sub_options);
                 bc->sub_hex = this->create_subscription<std_msgs::msg::String>(
                   top + "/hex",
                   queue_size_,
@@ -592,7 +606,7 @@ private:
                     if (bitmaps_.count(id)) {
                       bitmaps_[id]->canvas->update_data(b);
                     }
-                  });
+                  }, sub_options);
               }
               bitmaps_[id] = bc;
             }
@@ -680,7 +694,7 @@ private:
           written += static_cast<size_t>(w);
         } else if (w == -1) {
           if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            usleep(1000);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             if (written > 0) {
               continue;
             } else {
@@ -727,12 +741,17 @@ private:
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr events_changed_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr event_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::CallbackGroup::SharedPtr cb_group_reentrant_;
+  rclcpp::CallbackGroup::SharedPtr cb_group_timer_;
 };
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<NanoVizNode>());
+  auto node = std::make_shared<NanoVizNode>();
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }
