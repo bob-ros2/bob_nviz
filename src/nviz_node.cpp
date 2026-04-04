@@ -63,6 +63,41 @@ enum TerminalMode
   MODE_APPEND_NEWLINE
 };
 
+static Color parse_color(const json & j, Color def)
+{
+  if (j.is_array() && j.size() >= 3) {
+    uint8_t a = (j.size() >= 4) ? (uint8_t)j[3] : 255;
+    return {(uint8_t)j[0], (uint8_t)j[1], (uint8_t)j[2], a};
+  }
+  if (j.is_string()) {
+    std::string s = j.get<std::string>();
+    if (s.size() == 7 && s[0] == '#') {
+      try {
+        uint8_t r = static_cast<uint8_t>(std::stoul(s.substr(1, 2), nullptr, 16));
+        uint8_t g = static_cast<uint8_t>(std::stoul(s.substr(3, 2), nullptr, 16));
+        uint8_t b = static_cast<uint8_t>(std::stoul(s.substr(5, 2), nullptr, 16));
+        return {r, g, b, 255};
+      } catch (...) {}
+    }
+  }
+  return def;
+}
+
+static Rect parse_rect(const json & j, Rect def)
+{
+  if (j.is_array() && j.size() >= 4) {
+    return {j[0], j[1], j[2], j[3]};
+  }
+  if (j.is_object()) {
+    int x = j.value("x", def.x);
+    int y = j.value("y", def.y);
+    int w = j.value("w", j.value("width", def.w));
+    int h = j.value("h", j.value("height", def.h));
+    return {x, y, w, h};
+  }
+  return def;
+}
+
 class NanoTerminal
 {
 public:
@@ -479,12 +514,18 @@ private:
       }
       bool changed = false;
       for (const auto & cfg : arr) {
-        std::string act = cfg.value("action", "add");
-        std::string typ = cfg.value("type", "String");
+        std::string act = cfg.value("action", cfg.value("op", "add"));
+        if (act == "upsert") act = "add";
+        
+        std::string typ_raw = cfg.value("type", "String");
+        std::string typ = typ_raw;
+        std::transform(typ.begin(), typ.end(), typ.begin(), ::tolower);
+        
         std::string id = cfg.value("id", "");
         std::string top = cfg.value("topic", "");
-        auto aj = cfg.value("area", json::array({10, 10, 300, 200}));
-        Rect area = {aj[0], aj[1], aj[2], aj[3]};
+        
+        Rect area = parse_rect(cfg.value("area", cfg.value("position", json::object())), {10, 10, 300, 200});
+
         if (act == "remove") {
           std::lock_guard<std::mutex> lock_rem(mtx_);
           terminals_.erase(id); bitmaps_.erase(id); changed = true; continue;
@@ -492,12 +533,12 @@ private:
         if (id.empty()) {
           id = "e" + std::to_string(terminals_.size() + bitmaps_.size());
         }
-        if (typ == "String") {
-          auto tcj = cfg.value("text_color", json::array({255, 255, 255, 255}));
-          Color tc = {(uint8_t)tcj[0], (uint8_t)tcj[1], (uint8_t)tcj[2], (uint8_t)tcj[3]};
-          auto bcj = cfg.value("bg_color", json::array({0, 0, 0, 150}));
-          Color bc = {(uint8_t)bcj[0], (uint8_t)bcj[1], (uint8_t)bcj[2], (uint8_t)bcj[3]};
-          int fs = cfg.value("font_size", 16);
+        
+        if (typ == "string" || typ == "terminal") {
+          Color tc = parse_color(cfg.value("text_color", cfg.value("textColor", json::array({255, 255, 255, 255}))), {255, 255, 255, 255});
+          Color bc = parse_color(cfg.value("bg_color", cfg.value("backgroundColor", json::array({0, 0, 0, 150}))), {0, 0, 0, 150});
+          
+          int fs = cfg.value("font_size", cfg.value("fontSize", 16));
           int sc = std::max(1, fs / 8);
           int columns = cfg.value("columns", 0);
           double expire = cfg.value("expire", 0.0);
@@ -558,7 +599,7 @@ private:
               terminals_[id] = nt;
             }
           }
-        } else if (typ == "Bitmap") {
+        } else if (typ == "bitmap") {
           int dep = cfg.value("depth", 1);
           double expire = cfg.value("expire", 0.0);
           rclcpp::Duration lifetime = rclcpp::Duration::from_seconds(expire);
@@ -695,8 +736,10 @@ private:
           written += static_cast<size_t>(w);
         } else if (w == -1) {
           if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // Buffer full, skip remaining write for this frame to avoid blocking topics
-            return;
+            // Buffer full, wait briefly and keep trying to finish THIS frame 
+            // This is safe now because we use MultiThreadedExecutor for topics
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
           } else if (errno == EPIPE) {
             close(fifo_fd_);
             fifo_fd_ = -1;
