@@ -471,6 +471,7 @@ private:
 
   void event_callback(const std_msgs::msg::String::SharedPtr msg)
   {
+    RCLCPP_INFO(this->get_logger(), "Event received: %s", msg->data.c_str());
     try {
       auto arr = json::parse(msg->data);
       if (!arr.is_array()) {
@@ -694,12 +695,8 @@ private:
           written += static_cast<size_t>(w);
         } else if (w == -1) {
           if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            if (written > 0) {
-              continue;
-            } else {
-              return;
-            }
+            // Buffer full, skip remaining write for this frame to avoid blocking topics
+            return;
           } else if (errno == EPIPE) {
             close(fifo_fd_);
             fifo_fd_ = -1;
