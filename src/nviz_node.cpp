@@ -80,6 +80,13 @@ public:
     }
   }
 
+  void clear()
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    lines_.clear();
+    lines_.push_back("");
+  }
+
   void append(const std::string & text)
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -120,12 +127,7 @@ public:
     mode_ = mode;
   }
 
-  void clear()
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    lines_.clear();
-    lines_.push_back("");
-  }
+
 
   void set_title(const std::string & title)
   {
