@@ -87,6 +87,19 @@ public:
     std::lock_guard<std::mutex> lock(mutex_);
     lines_.clear();
     lines_.push_back("");
+    current_word_.clear();
+  }
+
+  void commit_word()
+  {
+    if (current_word_.empty()) {
+      return;
+    }
+    if (lines_.back().length() + current_word_.length() > wrap_width_) {
+      lines_.push_back("");
+    }
+    lines_.back() += current_word_;
+    current_word_.clear();
   }
 
   void append(const std::string & text)
@@ -217,17 +230,28 @@ public:
     if (fit < 1) {
       fit = 1;
     }
-    size_t start = (lines_.size() > static_cast<size_t>(fit)) ?
-      (lines_.size() - static_cast<size_t>(fit)) : 0;
 
-    for (size_t i = start; i < lines_.size(); ++i) {
+    // Build a temporary set of lines including the current word for smooth streaming
+    std::deque<std::string> draw_lines = lines_;
+    if (!current_word_.empty()) {
+      if (draw_lines.back().length() + current_word_.length() > wrap_width_) {
+        draw_lines.push_back(current_word_);
+      } else {
+        draw_lines.back() += current_word_;
+      }
+    }
+
+    size_t start = (draw_lines.size() > static_cast<size_t>(fit)) ?
+      (draw_lines.size() - static_cast<size_t>(fit)) : 0;
+
+    for (size_t i = start; i < draw_lines.size(); ++i) {
       int cur_x = area_.x + 4;
       if (align_ == ALIGN_RIGHT) {
-        cur_x = area_.x + area_.w - static_cast<int>(lines_[i].length()) * cw - 4;
+        cur_x = area_.x + area_.w - static_cast<int>(draw_lines[i].length()) * cw - 4;
       } else if (align_ == ALIGN_CENTER) {
-        cur_x = area_.x + (area_.w - static_cast<int>(lines_[i].length()) * cw) / 2;
+        cur_x = area_.x + (area_.w - static_cast<int>(draw_lines[i].length()) * cw) / 2;
       }
-      for (unsigned char c : lines_[i]) {
+      for (unsigned char c : draw_lines[i]) {
         draw_char(buffer, buffer_w, buffer_h, c, cur_x, cur_y, text_color_);
         cur_x += cw;
       }
@@ -281,21 +305,19 @@ private:
   void process_char(uint8_t c)
   {
     if (c == '\n') {
+      commit_word();
       lines_.push_back("");
-    } else if (c == '\t') {
-      for (int i = 0; i < 4; ++i) {
-        add_raw_char(' ');
+    } else if (c == ' ' || c == '\t') {
+      commit_word();
+      if (!lines_.back().empty() && lines_.back().length() < wrap_width_) {
+        lines_.back() += ' ';
       }
     } else if (c >= 32) {
-      add_raw_char(c);
+      current_word_ += static_cast<char>(c);
+      if (current_word_.length() >= wrap_width_) {
+        commit_word();
+      }
     }
-  }
-  void add_raw_char(uint8_t c)
-  {
-    if (lines_.back().length() >= wrap_width_) {
-      lines_.push_back("");
-    }
-    lines_.back() += static_cast<char>(c);
   }
   void draw_char(std::vector<uint8_t> & b, int bw, int bh, uint8_t c, int sx, int sy, Color col)
   {
@@ -326,7 +348,7 @@ private:
   Alignment align_;
   int columns_override_;
   size_t line_limit_, wrap_width_;
-  std::string title_;
+  std::string title_, current_word_;
   std::deque<std::string> lines_;
   std::mutex mutex_;
   TerminalMode mode_;
@@ -434,7 +456,8 @@ private:
         }
       }
 
-      std::vector<uint8_t> tmp(src_w_ * src_h_ * 3);
+      size_t frame_size = src_w_ * src_h_ * 3;
+      std::vector<uint8_t> tmp(frame_size);
       size_t read_bytes = 0;
       bool ok = true;
       while (read_bytes < tmp.size() && running_) {
@@ -477,7 +500,7 @@ private:
 void NanoVideo::draw(std::vector<uint8_t> & buffer, int width, int height)
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!frame_ready_) {
+  if (!frame_ready_ || frame_buffer_.empty()) {
     return;
   }
 
@@ -489,28 +512,45 @@ void NanoVideo::draw(std::vector<uint8_t> & buffer, int width, int height)
       continue;
     }
 
-    int start_x = std::max(0, area_.x);
-    int end_x = std::min(area_.x + src_w_, width);
-    int copy_w = end_x - start_x;
-    if (copy_w <= 0) {
+    int start_x_in_src = 0;
+    int end_x_in_src = src_w_;
+
+    // Handle horizontal clipping
+    int render_x = area_.x;
+    int current_row_w = src_w_;
+
+    if (render_x < 0) {
+      start_x_in_src = -render_x;
+      current_row_w += render_x;
+      render_x = 0;
+    }
+
+    if (render_x + current_row_w > width) {
+      current_row_w = width - render_x;
+    }
+
+    if (current_row_w <= 0) {
       continue;
     }
 
-    size_t src_off = (y * src_w_ + (start_x - area_.x)) * 3;
-    size_t dst_off = (dy * width + start_x) * 3;
+    size_t src_row_off = static_cast<size_t>(y) * src_w_ * 3;
+    size_t dst_row_off = (static_cast<size_t>(dy) * width + render_x) * 4;
 
-    if (swap) {
-      // Manual copy with R/B swap
-      for (int i = 0; i < copy_w; ++i) {
-        size_t s = src_off + i * 3;
-        size_t d = dst_off + i * 3;
-        buffer[d] = frame_buffer_[s + 2];      // Dest R <- Src B-channel is actually R in BGR
-        buffer[d + 1] = frame_buffer_[s + 1];  // G <- G
-        buffer[d + 2] = frame_buffer_[s];      // Dest B <- Src R-channel is actually B in BGR
+    for (int x = 0; x < current_row_w; ++x) {
+      size_t s = src_row_off + static_cast<size_t>(start_x_in_src + x) * 3;
+      size_t d = dst_row_off + static_cast<size_t>(x) * 4;
+
+      if (swap) {
+        buffer[d] = frame_buffer_[s + 2];      // BGR Input: S+2 is R
+        buffer[d + 1] = frame_buffer_[s + 1];  // G
+        buffer[d + 2] = frame_buffer_[s];      // B
+        buffer[d + 3] = 255;                   // A
+      } else {
+        buffer[d] = frame_buffer_[s];          // RGB Input: S is R
+        buffer[d + 1] = frame_buffer_[s + 1];  // G
+        buffer[d + 2] = frame_buffer_[s + 2];  // B
+        buffer[d + 3] = 255;                   // A
       }
-    } else {
-      // Direct fast memcpy
-      std::memcpy(buffer.data() + dst_off, frame_buffer_.data() + src_off, copy_w * 3);
     }
   }
 }
@@ -552,7 +592,7 @@ public:
     sub_options.callback_group = cb_group_reentrant_;
 
     events_changed_pub_ = this->create_publisher<std_msgs::msg::String>(
-      "events_changed", rclcpp::QoS(10).transient_local());
+      "events_changed", rclcpp::QoS(1).transient_local());
 
     event_sub_ = this->create_subscription<std_msgs::msg::String>(
       "events", 10, std::bind(&NanoVizNode::event_callback, this, std::placeholders::_1),
@@ -697,6 +737,11 @@ private:
               terminals_[id]->terminal->set_columns(columns);
               terminals_[id]->terminal->set_mode(tm);
               terminals_[id]->lifetime = lifetime;
+              terminals_[id]->area = area;
+              terminals_[id]->text_color = tc;
+              terminals_[id]->bg_color = bc;
+              terminals_[id]->font_size = fs;
+              terminals_[id]->title = tit;
               if (!initial_text.empty()) {
                 terminals_[id]->terminal->append(initial_text);
               }
@@ -705,6 +750,11 @@ private:
               nt->id = id; nt->topic = top;
               nt->creation_time = this->now();
               nt->lifetime = lifetime;
+              nt->area = area;
+              nt->text_color = tc;
+              nt->bg_color = bc;
+              nt->font_size = fs;
+              nt->title = tit;
               nt->terminal =
                 std::make_unique<NanoTerminal>(area, tc, bc, sc, 100, al, tit, columns, tm);
               if (!initial_text.empty()) {
@@ -747,11 +797,15 @@ private:
               bitmaps_[id]->canvas->set_area(area);
               bitmaps_[id]->canvas->set_color(fg);
               bitmaps_[id]->lifetime = lifetime;
+              bitmaps_[id]->area = area;
+              bitmaps_[id]->color = fg;
             } else {
               auto bc = std::make_shared<BitInst>();
               bc->id = id; bc->topic = top;
               bc->creation_time = this->now();
               bc->lifetime = lifetime;
+              bc->area = area;
+              bc->color = fg;
               bc->canvas = std::make_unique<NanoCanvas>(area, fg, dep);
               if (!top.empty()) {
                 auto sub_options = rclcpp::SubscriptionOptions();
@@ -801,19 +855,6 @@ private:
           std::string pipe = cfg["topic"];
           int sw = cfg["source_width"];
           int sh = cfg["source_height"];
-          double expire = cfg.value("expire", 0.0);
-        } else if (typ == "VideoStream") {
-          if (!cfg.contains("topic") || !cfg.contains("source_width") ||
-            !cfg.contains("source_height"))
-          {
-            RCLCPP_ERROR(
-              this->get_logger(),
-              "VideoStream missing topic/source_width/height for id '%s'", id.c_str());
-            continue;
-          }
-          std::string pipe = cfg["topic"];
-          int sw = cfg["source_width"];
-          int sh = cfg["source_height"];
           std::string enc = cfg.value("encoding", "rgb");
           if (enc != "rgb" && enc != "bgr") {
             RCLCPP_ERROR(this->get_logger(), "Unknown encoding '%s'. Using 'rgb'", enc.c_str());
@@ -827,14 +868,22 @@ private:
             if (videos_.count(id)) {
               videos_[id]->video->set_area(area);
               videos_[id]->lifetime = lifetime;
+              videos_[id]->area = area;
             } else {
               auto vi = std::make_shared<VideoInst>();
               vi->id = id; vi->pipe_path = pipe;
               vi->creation_time = this->now();
               vi->lifetime = lifetime;
+              vi->area = area;
+              vi->sw = sw;
+              vi->sh = sh;
+              vi->enc = enc;
               vi->video = std::make_unique<NanoVideo>(pipe, area, sw, sh, enc);
               videos_[id] = vi;
               video_order_.push_back(id);
+              RCLCPP_INFO(
+                this->get_logger(), "VideoStream '%s' matching pipe '%s' created.",
+                id.c_str(), pipe.c_str());
             }
           }
         } else {
@@ -848,7 +897,9 @@ private:
         publish_state();
       }
     } catch (const std::exception & e) {
-      RCLCPP_ERROR(this->get_logger(), "JSON: %s", e.what());
+      RCLCPP_ERROR(
+        this->get_logger(), "JSON Parsing Error: %s in msg: %s",
+        e.what(), msg->data.c_str());
     }
   }
 
@@ -858,16 +909,41 @@ private:
     std::lock_guard<std::mutex> lock_change(mtx_);
     for (auto const & [i, t] : terminals_) {
       j.push_back(
-        {{"id", i}, {"type", "String"}, {"topic", t->topic}, {"expire", t->lifetime.seconds()}});
+      {
+        {"id", i},
+        {"type", "String"},
+        {"topic", t->topic},
+        {"expire", t->lifetime.seconds()},
+        {"area", {t->area.x, t->area.y, t->area.w, t->area.h}},
+        {"text_color", {t->text_color.r, t->text_color.g, t->text_color.b, t->text_color.a}},
+        {"bg_color", {t->bg_color.r, t->bg_color.g, t->bg_color.b, t->bg_color.a}},
+        {"font_size", t->font_size},
+        {"title", t->title}
+      });
     }
     for (auto const & [i, b] : bitmaps_) {
       j.push_back(
-        {{"id", i}, {"type", "Bitmap"}, {"topic", b->topic}, {"expire", b->lifetime.seconds()}});
+      {
+        {"id", i},
+        {"type", "Bitmap"},
+        {"topic", b->topic},
+        {"expire", b->lifetime.seconds()},
+        {"area", {b->area.x, b->area.y, b->area.w, b->area.h}},
+        {"color", {b->color.r, b->color.g, b->color.b, b->color.a}}
+      });
     }
     for (auto const & [i, v] : videos_) {
       j.push_back(
-        {{"id", i}, {"type", "VideoStream"}, {"topic", v->pipe_path},
-          {"expire", v->lifetime.seconds()}});
+      {
+        {"id", i},
+        {"type", "VideoStream"},
+        {"topic", v->pipe_path},
+        {"expire", v->lifetime.seconds()},
+        {"area", {v->area.x, v->area.y, v->area.w, v->area.h}},
+        {"source_width", v->sw},
+        {"source_height", v->sh},
+        {"encoding", v->enc}
+      });
     }
     std_msgs::msg::String m;
     m.data = j.dump();
@@ -967,7 +1043,10 @@ private:
 
   struct TermInst
   {
-    std::string id, topic;
+    std::string id, topic, title;
+    Rect area;
+    Color text_color, bg_color;
+    int font_size;
     std::unique_ptr<NanoTerminal> terminal;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sub;
     rclcpp::Time creation_time;
@@ -976,6 +1055,8 @@ private:
   struct BitInst
   {
     std::string id, topic;
+    Rect area;
+    Color color;
     std::unique_ptr<NanoCanvas> canvas;
     rclcpp::Subscription<std_msgs::msg::UInt8MultiArray>::SharedPtr sub_bin;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sub_hex;
@@ -984,7 +1065,9 @@ private:
   };
   struct VideoInst
   {
-    std::string id, pipe_path;
+    std::string id, pipe_path, enc;
+    Rect area;
+    int sw, sh;
     std::unique_ptr<NanoVideo> video;
     rclcpp::Time creation_time;
     rclcpp::Duration lifetime{0, 0};
