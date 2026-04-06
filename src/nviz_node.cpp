@@ -186,9 +186,17 @@ public:
         } else if (bg_color_.a > 0) {
           uint32_t a = bg_color_.a;
           uint32_t na = 255 - a;
-          buffer[idx] = static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx]) * na + static_cast<uint32_t>(bg_color_.b) * a) >> 8);
-          buffer[idx + 1] = static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx + 1]) * na + static_cast<uint32_t>(bg_color_.g) * a) >> 8);
-          buffer[idx + 2] = static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx + 2]) * na + static_cast<uint32_t>(bg_color_.r) * a) >> 8);
+          buffer[idx] =
+            static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx]) * na +
+            static_cast<uint32_t>(bg_color_.b) * a) >> 8);
+          buffer[idx +
+            1] =
+            static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx + 1]) * na +
+            static_cast<uint32_t>(bg_color_.g) * a) >> 8);
+          buffer[idx +
+            2] =
+            static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx + 2]) * na +
+            static_cast<uint32_t>(bg_color_.r) * a) >> 8);
           buffer[idx + 3] = 255;
         }
       }
@@ -338,9 +346,17 @@ private:
                 } else if (col.a > 0) {
                   uint32_t a = col.a;
                   uint32_t na = 255 - a;
-                  b[idx] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx]) * na + static_cast<uint32_t>(col.b) * a) >> 8);
-                  b[idx + 1] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 1]) * na + static_cast<uint32_t>(col.g) * a) >> 8);
-                  b[idx + 2] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 2]) * na + static_cast<uint32_t>(col.r) * a) >> 8);
+                  b[idx] =
+                    static_cast<uint8_t>((static_cast<uint32_t>(b[idx]) * na +
+                    static_cast<uint32_t>(col.b) * a) >> 8);
+                  b[idx +
+                    1] =
+                    static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 1]) * na +
+                    static_cast<uint32_t>(col.g) * a) >> 8);
+                  b[idx +
+                    2] =
+                    static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 2]) * na +
+                    static_cast<uint32_t>(col.r) * a) >> 8);
                   b[idx + 3] = 255;
                 }
               }
@@ -411,9 +427,17 @@ public:
             } else if (combined_alpha > 0) {
               uint32_t a = combined_alpha;
               uint32_t na = 255 - a;
-              b[idx] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx]) * na + static_cast<uint32_t>(fg_.b) * a) >> 8);
-              b[idx + 1] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 1]) * na + static_cast<uint32_t>(fg_.g) * a) >> 8);
-              b[idx + 2] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 2]) * na + static_cast<uint32_t>(fg_.r) * a) >> 8);
+              b[idx] =
+                static_cast<uint8_t>((static_cast<uint32_t>(b[idx]) * na +
+                static_cast<uint32_t>(fg_.b) * a) >> 8);
+              b[idx +
+                1] =
+                static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 1]) * na +
+                static_cast<uint32_t>(fg_.g) * a) >> 8);
+              b[idx +
+                2] =
+                static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 2]) * na +
+                static_cast<uint32_t>(fg_.r) * a) >> 8);
               b[idx + 3] = 255;
             }
           }
@@ -617,7 +641,7 @@ public:
 
     running_ = true;
     render_thread_ = std::thread(&NanoVizNode::render_loop, this);
-    
+
     RCLCPP_INFO(this->get_logger(), "Nano-Viz: %dx%d @ %.1f fps", width_, height_, fps_);
     publish_state();
   }
@@ -731,12 +755,15 @@ private:
         }
 
         if (act != "add") {
-          RCLCPP_ERROR(this->get_logger(), "Unknown action '%s' for id '%s'", act.c_str(), id.c_str());
+          RCLCPP_ERROR(
+            this->get_logger(), "Unknown action '%s' for id '%s'", act.c_str(),
+            id.c_str());
           continue;
         }
 
         if (!cfg.contains("area") || !cfg["area"].is_array() || cfg["area"].size() != 4) {
-          RCLCPP_ERROR(this->get_logger(), "Missing or invalid 'area' [x,y,w,h] for id '%s'", id.c_str());
+          RCLCPP_ERROR(
+            this->get_logger(), "Missing or invalid 'area' [x,y,w,h] for id '%s'", id.c_str());
           continue;
         }
         auto aj = cfg["area"];
@@ -989,29 +1016,38 @@ private:
         // Auto-expiration
         auto it_t = terminals_.begin();
         while (it_t != terminals_.end()) {
-          if (it_t->second->lifetime.nanoseconds() > 0 && (now - it_t->second->creation_time) > it_t->second->lifetime)
+          if (it_t->second->lifetime.nanoseconds() > 0 &&
+            (now - it_t->second->creation_time) > it_t->second->lifetime)
+          {
             it_t = terminals_.erase(it_t);
-          else ++it_t;
+          } else {++it_t;}
         }
         auto it_b = bitmaps_.begin();
         while (it_b != bitmaps_.end()) {
-          if (it_b->second->lifetime.nanoseconds() > 0 && (now - it_b->second->creation_time) > it_b->second->lifetime)
+          if (it_b->second->lifetime.nanoseconds() > 0 &&
+            (now - it_b->second->creation_time) > it_b->second->lifetime)
+          {
             it_b = bitmaps_.erase(it_b);
-          else ++it_b;
+          } else {++it_b;}
         }
         auto it_v = videos_.begin();
         while (it_v != videos_.end()) {
-          if (it_v->second->lifetime.nanoseconds() > 0 && (now - it_v->second->creation_time) > it_v->second->lifetime) {
-            video_order_.erase(std::remove(video_order_.begin(), video_order_.end(), it_v->first), video_order_.end());
+          if (it_v->second->lifetime.nanoseconds() > 0 &&
+            (now - it_v->second->creation_time) > it_v->second->lifetime)
+          {
+            video_order_.erase(
+              std::remove(
+                video_order_.begin(),
+                video_order_.end(), it_v->first), video_order_.end());
             it_v = videos_.erase(it_v);
-          } else ++it_v;
+          } else {++it_v;}
         }
 
         for (auto const & id : video_order_) {
-          if (videos_.count(id)) videos_[id]->video->draw(buffer_, width_, height_);
+          if (videos_.count(id)) {videos_[id]->video->draw(buffer_, width_, height_);}
         }
-        for (auto const & [id, b] : bitmaps_) b->canvas->draw(buffer_, width_, height_);
-        for (auto const & [id, t] : terminals_) t->terminal->draw(buffer_, width_, height_);
+        for (auto const & [id, b] : bitmaps_) {b->canvas->draw(buffer_, width_, height_);}
+        for (auto const & [id, t] : terminals_) {t->terminal->draw(buffer_, width_, height_);}
       }
 
       if (fifo_fd_ >= 0) {
@@ -1019,18 +1055,19 @@ private:
         size_t written = 0;
         while (written < total && running_ && rclcpp::ok()) {
           ssize_t w = write(fifo_fd_, buffer_.data() + written, total - written);
-          if (w > 0) written += w;
-          else if (w == -1) {
+          if (w > 0) {written += w;} else if (w == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
               std::this_thread::sleep_for(std::chrono::milliseconds(1));
               continue;
             } else if (errno == EPIPE) {
-              RCLCPP_WARN(this->get_logger(), "Output FIFO (FFmpeg) disconnected. Waiting for new reader...");
+              RCLCPP_WARN(
+                this->get_logger(), "Output FIFO (FFmpeg) disconnected. Waiting for new reader...");
               close(fifo_fd_);
               fifo_fd_ = -1;
               break;
             } else {
-              RCLCPP_ERROR(this->get_logger(), "Error writing to FIFO (errno: %d). Reopening...", errno);
+              RCLCPP_ERROR(
+                this->get_logger(), "Error writing to FIFO (errno: %d). Reopening...", errno);
               close(fifo_fd_);
               fifo_fd_ = -1;
               break;
