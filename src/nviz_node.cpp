@@ -184,11 +184,11 @@ public:
           buffer[idx + 2] = bg_color_.r;
           buffer[idx + 3] = 255;
         } else if (bg_color_.a > 0) {
-          uint16_t a = bg_color_.a;
-          uint16_t na = 255 - a;
-          buffer[idx] = (buffer[idx] * na + bg_color_.b * a) >> 8;
-          buffer[idx + 1] = (buffer[idx + 1] * na + bg_color_.g * a) >> 8;
-          buffer[idx + 2] = (buffer[idx + 2] * na + bg_color_.r * a) >> 8;
+          uint32_t a = bg_color_.a;
+          uint32_t na = 255 - a;
+          buffer[idx] = static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx]) * na + static_cast<uint32_t>(bg_color_.b) * a) >> 8);
+          buffer[idx + 1] = static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx + 1]) * na + static_cast<uint32_t>(bg_color_.g) * a) >> 8);
+          buffer[idx + 2] = static_cast<uint8_t>((static_cast<uint32_t>(buffer[idx + 2]) * na + static_cast<uint32_t>(bg_color_.r) * a) >> 8);
           buffer[idx + 3] = 255;
         }
       }
@@ -336,11 +336,11 @@ private:
                   b[idx + 2] = col.r;
                   b[idx + 3] = 255;
                 } else if (col.a > 0) {
-                  uint16_t a = col.a;
-                  uint16_t na = 255 - a;
-                  b[idx] = (b[idx] * na + col.b * a) >> 8;
-                  b[idx + 1] = (b[idx + 1] * na + col.g * a) >> 8;
-                  b[idx + 2] = (b[idx + 2] * na + col.r * a) >> 8;
+                  uint32_t a = col.a;
+                  uint32_t na = 255 - a;
+                  b[idx] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx]) * na + static_cast<uint32_t>(col.b) * a) >> 8);
+                  b[idx + 1] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 1]) * na + static_cast<uint32_t>(col.g) * a) >> 8);
+                  b[idx + 2] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 2]) * na + static_cast<uint32_t>(col.r) * a) >> 8);
                   b[idx + 3] = 255;
                 }
               }
@@ -409,11 +409,11 @@ public:
               b[idx + 2] = fg_.r;
               b[idx + 3] = 255;
             } else if (combined_alpha > 0) {
-              uint16_t a = static_cast<uint16_t>(combined_alpha);
-              uint16_t na = 255 - a;
-              b[idx] = (b[idx] * na + fg_.b * a) >> 8;
-              b[idx + 1] = (b[idx + 1] * na + fg_.g * a) >> 8;
-              b[idx + 2] = (b[idx + 2] * na + fg_.r * a) >> 8;
+              uint32_t a = combined_alpha;
+              uint32_t na = 255 - a;
+              b[idx] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx]) * na + static_cast<uint32_t>(fg_.b) * a) >> 8);
+              b[idx + 1] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 1]) * na + static_cast<uint32_t>(fg_.g) * a) >> 8);
+              b[idx + 2] = static_cast<uint8_t>((static_cast<uint32_t>(b[idx + 2]) * na + static_cast<uint32_t>(fg_.r) * a) >> 8);
               b[idx + 3] = 255;
             }
           }
@@ -604,7 +604,6 @@ public:
 
     buffer_.resize(width_ * height_ * 4, 0);
     cb_group_reentrant_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
-    cb_group_timer_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
     auto sub_options = rclcpp::SubscriptionOptions();
     sub_options.callback_group = cb_group_reentrant_;
@@ -616,15 +615,19 @@ public:
       "events", 10, std::bind(&NanoVizNode::event_callback, this, std::placeholders::_1),
       sub_options);
 
-    timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(
-        static_cast<int>(1000.0 / fps_)), std::bind(&NanoVizNode::render_loop, this),
-      cb_group_timer_);
+    running_ = true;
+    render_thread_ = std::thread(&NanoVizNode::render_loop, this);
+    
     RCLCPP_INFO(this->get_logger(), "Nano-Viz: %dx%d @ %.1f fps", width_, height_, fps_);
     publish_state();
   }
+
   ~NanoVizNode()
   {
+    running_ = false;
+    if (render_thread_.joinable()) {
+      render_thread_.join();
+    }
     if (fifo_fd_ != -1) {
       close(fifo_fd_);
     }
@@ -647,19 +650,63 @@ private:
     return v ? std::string(v) : this->get_parameter(p).as_string();
   }
 
+  void publish_state()
+  {
+    nlohmann::json j = nlohmann::json::array();
+    std::lock_guard<std::mutex> lock(mtx_);
+
+    for (auto const & [id, t] : terminals_) {
+      j.push_back(
+        {{"type", "String"},
+          {"id", t->id},
+          {"topic", t->topic},
+          {"area", {t->area.x, t->area.y, t->area.w, t->area.h}},
+          {"font_size", t->font_size},
+          {"text_color",
+            {t->text_color.r, t->text_color.g, t->text_color.b, t->text_color.a}},
+          {"bg_color",
+            {t->bg_color.r, t->bg_color.g, t->bg_color.b, t->bg_color.a}},
+          {"title", t->title}});
+    }
+    for (auto const & [id, b] : bitmaps_) {
+      j.push_back(
+        {{"type", "Bitmap"},
+          {"id", b->id},
+          {"topic", b->topic},
+          {"area", {b->area.x, b->area.y, b->area.w, b->area.h}},
+          {"color", {b->color.r, b->color.g, b->color.b, b->color.a}}});
+    }
+    for (auto const & id : video_order_) {
+      if (videos_.count(id)) {
+        auto v = videos_[id];
+        j.push_back(
+          {{"type", "VideoStream"},
+            {"id", v->id},
+            {"topic", v->pipe_path},
+            {"area", {v->area.x, v->area.y, v->area.w, v->area.h}},
+            {"source_width", v->sw},
+            {"source_height", v->sh},
+            {"encoding", v->enc}});
+      }
+    }
+
+    std_msgs::msg::String msg;
+    msg.data = j.dump();
+    events_changed_pub_->publish(msg);
+  }
+
   void event_callback(const std_msgs::msg::String::SharedPtr msg)
   {
     try {
-      auto arr = json::parse(msg->data);
-      if (!arr.is_array()) {
-        RCLCPP_ERROR(this->get_logger(), "Event data is not a JSON array!");
-        return;
-      }
+      auto data = nlohmann::json::parse(msg->data);
+      if (!data.is_array()) {return;}
+
       bool changed = false;
-      for (const auto & cfg : arr) {
+      for (auto & cfg : data) {
         std::string act = cfg.value("action", "add");
         std::string typ = cfg.value("type", "String");
         std::string id = cfg.value("id", "");
+
         if (act == "clear_all") {
           std::lock_guard<std::mutex> lock_clr(mtx_);
           terminals_.clear(); bitmaps_.clear(); videos_.clear();
@@ -672,22 +719,24 @@ private:
           continue;
         }
 
+        if (act == "remove") {
+          std::lock_guard<std::mutex> lock_rem(mtx_);
+          terminals_.erase(id); bitmaps_.erase(id);
+          videos_.erase(id);
+          video_order_.erase(
+            std::remove(
+              video_order_.begin(), video_order_.end(),
+              id), video_order_.end());
+          changed = true; continue;
+        }
+
         if (act != "add") {
-          RCLCPP_ERROR(
-            this->get_logger(), "Unknown action '%s' for id '%s'", act.c_str(),
-            id.c_str());
+          RCLCPP_ERROR(this->get_logger(), "Unknown action '%s' for id '%s'", act.c_str(), id.c_str());
           continue;
         }
 
-        // Validate area according to README (must be array [x,y,w,h])
         if (!cfg.contains("area") || !cfg["area"].is_array() || cfg["area"].size() != 4) {
-          RCLCPP_ERROR(
-            this->get_logger(),
-            "Invalid or missing 'area' array for id '%s' (Expected [x,y,w,h])", id.c_str());
-          if (cfg.contains("position")) {
-            RCLCPP_ERROR(
-              this->get_logger(), "Found disallowed field 'position'. Use 'area' instead!");
-          }
+          RCLCPP_ERROR(this->get_logger(), "Missing or invalid 'area' [x,y,w,h] for id '%s'", id.c_str());
           continue;
         }
         auto aj = cfg["area"];
@@ -917,141 +966,80 @@ private:
     }
   }
 
-  void publish_state()
-  {
-    json j = json::array();
-    std::lock_guard<std::mutex> lock_change(mtx_);
-    for (auto const & [i, t] : terminals_) {
-      j.push_back(
-      {
-        {"id", i},
-        {"type", "String"},
-        {"topic", t->topic},
-        {"expire", t->lifetime.seconds()},
-        {"area", {t->area.x, t->area.y, t->area.w, t->area.h}},
-        {"text_color", {t->text_color.r, t->text_color.g, t->text_color.b, t->text_color.a}},
-        {"bg_color", {t->bg_color.r, t->bg_color.g, t->bg_color.b, t->bg_color.a}},
-        {"font_size", t->font_size},
-        {"title", t->title}
-      });
-    }
-    for (auto const & [i, b] : bitmaps_) {
-      j.push_back(
-      {
-        {"id", i},
-        {"type", "Bitmap"},
-        {"topic", b->topic},
-        {"expire", b->lifetime.seconds()},
-        {"area", {b->area.x, b->area.y, b->area.w, b->area.h}},
-        {"color", {b->color.r, b->color.g, b->color.b, b->color.a}}
-      });
-    }
-    for (auto const & [i, v] : videos_) {
-      j.push_back(
-      {
-        {"id", i},
-        {"type", "VideoStream"},
-        {"topic", v->pipe_path},
-        {"expire", v->lifetime.seconds()},
-        {"area", {v->area.x, v->area.y, v->area.w, v->area.h}},
-        {"source_width", v->sw},
-        {"source_height", v->sh},
-        {"encoding", v->enc}
-      });
-    }
-    std_msgs::msg::String m;
-    m.data = j.dump();
-    events_changed_pub_->publish(m);
-  }
-
   void render_loop()
   {
-    bool changed = false;
-    {
-      auto now = this->now();
-      std::lock_guard<std::mutex> lock_expire(mtx_);
-      for (auto it = terminals_.begin(); it != terminals_.end(); ) {
-        if (it->second->lifetime.nanoseconds() > 0 &&
-          (it->second->creation_time + it->second->lifetime) < now)
-        {
-          it = terminals_.erase(it);
-          changed = true;
-        } else {
-          ++it;
+    while (running_ && rclcpp::ok()) {
+      if (fifo_fd_ < 0) {
+        fifo_fd_ = open(fifo_path_.c_str(), O_WRONLY | O_NONBLOCK);
+        if (fifo_fd_ >= 0) {
+          int flags = fcntl(fifo_fd_, F_GETFL, 0);
+          fcntl(fifo_fd_, F_SETFL, flags & ~O_NONBLOCK);
+          RCLCPP_INFO(this->get_logger(), "Nano-Viz: Output FIFO opened: %s", fifo_path_.c_str());
         }
       }
-      for (auto it = bitmaps_.begin(); it != bitmaps_.end(); ) {
-        if (it->second->lifetime.nanoseconds() > 0 &&
-          (it->second->creation_time + it->second->lifetime) < now)
-        {
-          it = bitmaps_.erase(it);
-          changed = true;
-        } else {
-          ++it;
-        }
-      }
-      for (auto it = videos_.begin(); it != videos_.end(); ) {
-        if (it->second->lifetime.nanoseconds() > 0 &&
-          (it->second->creation_time + it->second->lifetime) < now)
-        {
-          std::string id = it->first;
-          it = videos_.erase(it);
-          video_order_.erase(
-            std::remove(video_order_.begin(), video_order_.end(), id),
-            video_order_.end());
-          changed = true;
-        } else {
-          ++it;
-        }
-      }
-    }
-    if (changed) {
-      publish_state();
-    }
 
-    std::fill(buffer_.begin(), buffer_.end(), 0);
-    {
-      std::lock_guard<std::mutex> lock_draw(mtx_);
-      // Render components: Video (Bottom) -> Bitmaps -> Terminals (Top)
-      for (const auto & id : video_order_) {
-        if (videos_.count(id)) {
-          videos_[id]->video->draw(buffer_, width_, height_);
+      auto frame_start = std::chrono::steady_clock::now();
+      auto frame_duration = std::chrono::milliseconds(static_cast<int>(1000.0 / fps_));
+
+      auto now = this->now();
+      {
+        std::lock_guard<std::mutex> lock(mtx_);
+        std::fill(buffer_.begin(), buffer_.end(), 0);
+
+        // Auto-expiration
+        auto it_t = terminals_.begin();
+        while (it_t != terminals_.end()) {
+          if (it_t->second->lifetime.nanoseconds() > 0 && (now - it_t->second->creation_time) > it_t->second->lifetime)
+            it_t = terminals_.erase(it_t);
+          else ++it_t;
         }
+        auto it_b = bitmaps_.begin();
+        while (it_b != bitmaps_.end()) {
+          if (it_b->second->lifetime.nanoseconds() > 0 && (now - it_b->second->creation_time) > it_b->second->lifetime)
+            it_b = bitmaps_.erase(it_b);
+          else ++it_b;
+        }
+        auto it_v = videos_.begin();
+        while (it_v != videos_.end()) {
+          if (it_v->second->lifetime.nanoseconds() > 0 && (now - it_v->second->creation_time) > it_v->second->lifetime) {
+            video_order_.erase(std::remove(video_order_.begin(), video_order_.end(), it_v->first), video_order_.end());
+            it_v = videos_.erase(it_v);
+          } else ++it_v;
+        }
+
+        for (auto const & id : video_order_) {
+          if (videos_.count(id)) videos_[id]->video->draw(buffer_, width_, height_);
+        }
+        for (auto const & [id, b] : bitmaps_) b->canvas->draw(buffer_, width_, height_);
+        for (auto const & [id, t] : terminals_) t->terminal->draw(buffer_, width_, height_);
       }
-      for (auto const & [id, b] : bitmaps_) {
-        b->canvas->draw(buffer_, width_, height_);
-      }
-      for (auto const & [id, t] : terminals_) {
-        t->terminal->draw(buffer_, width_, height_);
-      }
-    }
-    if (fifo_fd_ == -1) {
-      if (access(fifo_path_.c_str(), F_OK) == -1) {
-        mkfifo(fifo_path_.c_str(), 0666);
-      }
-      fifo_fd_ = open(fifo_path_.c_str(), O_WRONLY | O_NONBLOCK);
-    }
-    if (fifo_fd_ != -1) {
-      size_t written = 0;
-      while (written < buffer_.size()) {
-        ssize_t w = write(fifo_fd_, buffer_.data() + written, buffer_.size() - written);
-        if (w > 0) {
-          written += static_cast<size_t>(w);
-        } else if (w == -1) {
-          if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            // Buffer full, wait briefly and keep trying to finish THIS frame
-            // This is safe now because we use MultiThreadedExecutor for topics
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            continue;
-          } else if (errno == EPIPE) {
-            close(fifo_fd_);
-            fifo_fd_ = -1;
-            break;
-          } else {
-            break;
+
+      if (fifo_fd_ >= 0) {
+        size_t total = buffer_.size();
+        size_t written = 0;
+        while (written < total && running_ && rclcpp::ok()) {
+          ssize_t w = write(fifo_fd_, buffer_.data() + written, total - written);
+          if (w > 0) written += w;
+          else if (w == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(1));
+              continue;
+            } else if (errno == EPIPE) {
+              RCLCPP_WARN(this->get_logger(), "Output FIFO (FFmpeg) disconnected. Waiting for new reader...");
+              close(fifo_fd_);
+              fifo_fd_ = -1;
+              break;
+            } else {
+              RCLCPP_ERROR(this->get_logger(), "Error writing to FIFO (errno: %d). Reopening...", errno);
+              close(fifo_fd_);
+              fifo_fd_ = -1;
+              break;
+            }
           }
         }
       }
+
+      std::this_thread::sleep_until(frame_start + frame_duration);
     }
   }
 
@@ -1099,9 +1087,9 @@ private:
   std::mutex mtx_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr events_changed_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr event_sub_;
-  rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::CallbackGroup::SharedPtr cb_group_reentrant_;
-  rclcpp::CallbackGroup::SharedPtr cb_group_timer_;
+  std::atomic<bool> running_{false};
+  std::thread render_thread_;
 };
 
 int main(int argc, char ** argv)

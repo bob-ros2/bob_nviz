@@ -119,21 +119,31 @@ do
         sleep 2
     fi
 
-    echo "Starting ffmpeg stream to Twitch..."
+    # Standard Twitch Ingest
+    INGEST_SERVER="rtmp://live-fra.twitch.tv/app/"
     
-    # Use master pipe fed by bob_audio mixer (S16LE, 44100Hz, Stereo)
-    ffmpeg -hide_banner -loglevel error -nostats \
+    # Cleanup STREAM_KEY (strictly sanitizing whitespace/newlines)
+    STREAM_KEY=$(cat /run/secrets/twitch_key | tr -d '\r\n ')
+    
+    MASKED_KEY="${STREAM_KEY:0:4}****${STREAM_KEY: -4}"
+    echo "[$(date)] Starting stream to Twitch (Key: $MASKED_KEY)..."
+    
+    # ffmpeg Command - Original Style (Simple & Clean)
+    FFMPEG_LOG=$(mktemp)
+    if ffmpeg -hide_banner -loglevel info -nostats \
         -f rawvideo -pixel_format bgra -video_size ${NVIZ_WIDTH}x${NVIZ_HEIGHT} \
-        -framerate ${NVIZ_FPS} -thread_queue_size 128 \
-        -probesize 500000 -analyzeduration 500000 \
-        -i $NVIZ_FIFO_PATH \
-        -f s16le -ar 44100 -ac 2 -thread_queue_size 128 -i "$AUDIO_MASTER_PATH" \
+        -framerate ${NVIZ_FPS} -i $NVIZ_FIFO_PATH \
+        -f s16le -ar 44100 -ac 2 -i "$AUDIO_MASTER_PATH" \
         -c:v libx264 -pix_fmt yuv420p -preset ultrafast -tune zerolatency \
-        -b:v 3000k -maxrate 3000k -bufsize 3000k \
+        -b:v 3000k -maxrate 3000k -bufsize 6000k \
         -c:a aac -b:a 128k -ar 44100 -ac 2 \
-        -g 60 -r ${NVIZ_FPS} \
-        -f flv "${INGEST_SERVER}${STREAM_KEY}" || true
-
-    echo "ffmpeg exited. Restarting in 5 seconds..."
+        -g 60 -f flv "${INGEST_SERVER}${STREAM_KEY}" 2> "$FFMPEG_LOG"; then
+        echo "ffmpeg exited normally."
+    else
+        # Mask the key in the error log as well
+        cat "$FFMPEG_LOG" | sed "s/$STREAM_KEY/**********/g"
+        echo "ffmpeg exited with error. Restarting in 5 seconds..."
+    fi
+    rm -f "$FFMPEG_LOG"
     sleep 5
 done
