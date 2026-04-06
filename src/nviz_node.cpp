@@ -184,12 +184,11 @@ public:
           buffer[idx + 2] = bg_color_.r;
           buffer[idx + 3] = 255;
         } else if (bg_color_.a > 0) {
-          float alpha = bg_color_.a / 255.0f;
-          buffer[idx] = static_cast<uint8_t>(buffer[idx] * (1.0f - alpha) + bg_color_.b * alpha);
-          buffer[idx + 1] = static_cast<uint8_t>(
-            buffer[idx + 1] * (1.0f - alpha) + bg_color_.g * alpha);
-          buffer[idx + 2] = static_cast<uint8_t>(
-            buffer[idx + 2] * (1.0f - alpha) + bg_color_.r * alpha);
+          uint16_t a = bg_color_.a;
+          uint16_t na = 255 - a;
+          buffer[idx] = (buffer[idx] * na + bg_color_.b * a) >> 8;
+          buffer[idx + 1] = (buffer[idx + 1] * na + bg_color_.g * a) >> 8;
+          buffer[idx + 2] = (buffer[idx + 2] * na + bg_color_.r * a) >> 8;
           buffer[idx + 3] = 255;
         }
       }
@@ -331,10 +330,19 @@ private:
               int ty = sy + r * scale_ + py;
               if (tx >= 0 && tx < bw && ty >= 0 && ty < bh) {
                 int idx = (ty * bw + tx) * 4;
-                b[idx] = col.b;
-                b[idx + 1] = col.g;
-                b[idx + 2] = col.r;
-                b[idx + 3] = 255;
+                if (col.a == 255) {
+                  b[idx] = col.b;
+                  b[idx + 1] = col.g;
+                  b[idx + 2] = col.r;
+                  b[idx + 3] = 255;
+                } else if (col.a > 0) {
+                  uint16_t a = col.a;
+                  uint16_t na = 255 - a;
+                  b[idx] = (b[idx] * na + col.b * a) >> 8;
+                  b[idx + 1] = (b[idx + 1] * na + col.g * a) >> 8;
+                  b[idx + 2] = (b[idx + 2] * na + col.r * a) >> 8;
+                  b[idx + 3] = 255;
+                }
               }
             }
           }
@@ -394,10 +402,20 @@ public:
 
           if (set) {
             int idx = (ty * bw + tx) * 4;
-            b[idx] = (fg_.b * val) / 255;
-            b[idx + 1] = (fg_.g * val) / 255;
-            b[idx + 2] = (fg_.r * val) / 255;
-            b[idx + 3] = 255;
+            uint32_t combined_alpha = (static_cast<uint32_t>(fg_.a) * val) / 255;
+            if (combined_alpha >= 255) {
+              b[idx] = fg_.b;
+              b[idx + 1] = fg_.g;
+              b[idx + 2] = fg_.r;
+              b[idx + 3] = 255;
+            } else if (combined_alpha > 0) {
+              uint16_t a = static_cast<uint16_t>(combined_alpha);
+              uint16_t na = 255 - a;
+              b[idx] = (b[idx] * na + fg_.b * a) >> 8;
+              b[idx + 1] = (b[idx + 1] * na + fg_.g * a) >> 8;
+              b[idx + 2] = (b[idx + 2] * na + fg_.r * a) >> 8;
+              b[idx + 3] = 255;
+            }
           }
         }
       }
@@ -642,20 +660,16 @@ private:
         std::string act = cfg.value("action", "add");
         std::string typ = cfg.value("type", "String");
         std::string id = cfg.value("id", "");
+        if (act == "clear_all") {
+          std::lock_guard<std::mutex> lock_clr(mtx_);
+          terminals_.clear(); bitmaps_.clear(); videos_.clear();
+          video_order_.clear();
+          changed = true; continue;
+        }
+
         if (id.empty()) {
           RCLCPP_ERROR(this->get_logger(), "Missing mandatory 'id' field");
           continue;
-        }
-
-        if (act == "remove") {
-          std::lock_guard<std::mutex> lock_rem(mtx_);
-          terminals_.erase(id); bitmaps_.erase(id);
-          videos_.erase(id);
-          video_order_.erase(
-            std::remove(
-              video_order_.begin(), video_order_.end(),
-              id), video_order_.end());
-          changed = true; continue;
         }
 
         if (act != "add") {

@@ -122,7 +122,7 @@ do
     echo "Starting ffmpeg stream to Twitch..."
     
     # Use master pipe fed by bob_audio mixer (S16LE, 44100Hz, Stereo)
-    ffmpeg \
+    ffmpeg -hide_banner -loglevel error -nostats \
         -f rawvideo -pixel_format bgra -video_size ${NVIZ_WIDTH}x${NVIZ_HEIGHT} \
         -framerate ${NVIZ_FPS} -thread_queue_size 128 \
         -probesize 500000 -analyzeduration 500000 \

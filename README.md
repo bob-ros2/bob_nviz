@@ -10,6 +10,7 @@
 
 ## Key Features
 - **CPU-Only Rendering**: Zero GPU usage, ideal for headless servers or containers.
+- **High-Performance Alpha Blending**: Supports transparency for terminals and bitmaps using a specialized **integer-based rendering engine** (no floating-point overhead).
 - **Minimal Dependencies**: Requires only `rclcpp` and `nlohmann_json`.
 - **Amiga-Style Aesthetic**: 8x8 bitmap font with full UTF-8 to Latin-1 decoding.
 - **Dynamic Layers**: Manage multiple text terminals and bitmap canvases via JSON events.
@@ -68,9 +69,11 @@ The node is controlled by sending JSON arrays to the `events` topic.
 ### Common Fields
 Every layer supports:
 - `id` (string, optional): Unique identifier.
-- `action` (string, optional): `add` (default) or `remove`.
-- `expire` (float, optional): Auto-remove after $N$ seconds. `0` for infinite.
 - `area` (array): `[x, y, width, height]`. Mandatory for creation.
+- `action` (string, optional): 
+  - `add` (default): Create or update an element.
+  - `remove`: Remove element by `id`.
+  - `clear_all`: Wipe the entire canvas (all layers).
 
 ### 1. `String` (Terminal)
 Renders a rolling text terminal.
@@ -134,7 +137,25 @@ ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"Video
 ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"action\":\"remove\", \"id\":\"alert\"}]"'
 ```
 
+### Global Reset (Clear All)
+```bash
+ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"action\":\"clear_all\"}]"'
+```
+
 ---
+
+## Headless & Software Rendering
+
+`bob_nviz` is optimized for headless operation. If you are running in a Docker container or on a NAS without a GPU, ensure the following environment variables are set to force software rendering via Mesa:
+
+```bash
+export DISPLAY=:99
+export QT_QPA_PLATFORM=xcb
+export LIBGL_ALWAYS_SOFTWARE=1
+export GALLIUM_DRIVER=llvmpipe
+```
+
+Required system packages for headless Qt: `xvfb`, `libxcb-cursor0`, `libgl1-mesa-dri`.
 
 ## Audio System
 
