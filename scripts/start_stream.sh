@@ -120,7 +120,7 @@ do
     fi
 
     # Standard Twitch Ingest
-    INGEST_SERVER="rtmp://live-fra.twitch.tv/app/"
+    INGEST_SERVER="${INGEST_SERVER:-rtmp://live-fra.twitch.tv/app/}"
     
     # Cleanup STREAM_KEY (strictly sanitizing whitespace/newlines)
     STREAM_KEY=$(cat /run/secrets/twitch_key | tr -d '\r\n ')

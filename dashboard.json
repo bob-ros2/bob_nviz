@@ -1,0 +1,10 @@
+[
+  {
+    "action": "add",
+    "type": "VideoStream",
+    "id": "smallchat_video",
+    "area": [0, 0, 426, 480],
+    "pipe_path": "/tmp/smallchat_pipe",
+    "encoding": "rgb"
+  }
+]

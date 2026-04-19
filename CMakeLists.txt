@@ -9,10 +9,16 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 add_executable(nviz
   src/nviz_node.cpp
+  src/render_utils.cpp
+  src/nano_terminal.cpp
+  src/nano_canvas.cpp
+  src/nano_video.cpp
+  src/nano_marker_layer.cpp
 )
 
 target_include_directories(nviz PUBLIC
@@ -27,6 +33,7 @@ target_link_libraries(nviz
 ament_target_dependencies(nviz
   rclcpp
   std_msgs
+  visualization_msgs
 )
 
 install(TARGETS
