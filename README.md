@@ -101,7 +101,16 @@ Displays raw video buffers from a pipe (headless streaming).
 - `encoding` (string, optional): `rgb` (default) or `bgr`.
 - `area` (array): `[x, y, w, h]` for placement. (Note: Scaling is not supported; `w/h` should match source dimensions).
 
-### 4. Layer Actions
+### 4. `MarkerLayer` (2D Projection)
+Projects 3D ROS markers onto a 2D software plane (Front view: Y/Z plane). **Optimized specifically for `bob_face` package 2D visualizations.**
+- `topic` (string): ROS topic for `visualization_msgs/MarkerArray`.
+- `area` (array): `[x, y, width, height]` (drawing bounds).
+- `scale` (float): Mapping of ROS meters to pixels (Default: `1000.0`).
+- `offset_x` / `offset_y` (float): Fine-tuning of the projection center.
+- `title` (string, optional): Title bar text.
+- `exclude_ns` (string, optional): Comma-separated list of marker namespaces to hide (e.g. `"ir_sensors,collision"`).
+
+### 5. Layer Actions
 - `action`: `add` (create/update) or `remove` (delete by `id`).
 - `id`: Unique identifier for the layer (mandatory for updates/removals).
 
@@ -130,6 +139,11 @@ ros2 topic pub --once /ui/heart/hex std_msgs/msg/String "data: '0C301E783FfC7FfE
 ```bash
 # Register a 320x240 video stream from a pipe (using BGR encoding for OpenCV compatibility)
 ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"VideoStream\", \"id\":\"cam\", \"topic\":\"/tmp/overlay_pipe\", \"area\":[500, 20, 320, 240], \"source_width\":320, \"source_height\":240, \"encoding\":\"bgr\"}]"'
+```
+
+### Add a Marker Visualization (e.g. Lidar or Bob Face)
+```bash
+ros2 topic pub --once /eva/events std_msgs/msg/String 'data: "[{\"type\":\"MarkerLayer\", \"id\":\"face\", \"topic\":\"/eva/face_markers\", \"area\":[10, 10, 300, 300], \"scale\":1500.0, \"title\":\"Bob Face\"}]"'
 ```
 
 ### Remove a Layer
